@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from app.core.config import get_settings
 from app.db.init_db import init_db
+from app.api.users import router as user_router
 
 settings = get_settings()
 
@@ -17,6 +18,9 @@ app = FastAPI(
     debug=settings.debug,
     lifespan=lifespan
 )
+
+# 路由挂载
+router = app.include_router(user_router)
 
 
 @app.get("/health")
