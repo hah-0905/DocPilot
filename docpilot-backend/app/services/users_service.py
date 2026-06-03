@@ -6,7 +6,7 @@ from app.models.users import AuthActionToken, User
 from starlette import status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.utils import security
-from app.schemas.users import UserInfoBase
+from app.schemas.users import UserInfoBase, UserLogin
 import uuid
 import hashlib
 
@@ -18,12 +18,16 @@ async def get_user_by_email(email: str, db: AsyncSession):
     return result.scalar_one_or_none()
 
 # 根据用户名获取用户
+
+
 async def get_user_by_username(username: str, db: AsyncSession):
     query = select(User).where(User.username == username)
     result = await db.execute(query)
     return result.scalar_one_or_none()
 
 # 创建用户
+
+
 async def create_user(user_data: UserInfoBase, db: AsyncSession):
     # 密码加密处理 -> add
     hashed_password = security.get_hash_password(user_data.password)
@@ -38,7 +42,9 @@ async def create_user(user_data: UserInfoBase, db: AsyncSession):
     return user
 
 # 生成 Token
-async def create_token(db: AsyncSession, email: str):
+
+
+async def create_token(email: str, db: AsyncSession):
     # 生成 Token + 设置过期时间 → 查询数据库当前用户是否有 Token → 有：更新；没有：添加
     action_type = "email_verify"
     token = str(uuid.uuid4())
@@ -69,5 +75,21 @@ async def create_token(db: AsyncSession, email: str):
             expires_at=expires_at,
         )
         db.add(user_token)
-        await db.commit()
+    await db.commit()
     return token
+
+
+async def authenticate_user(user_data: UserLogin, db: AsyncSession):
+    user = None
+    
+    if user_data.email:
+        user = await get_user_by_email(user_data.email, db)
+    elif user_data.username:
+        user = await get_user_by_username(user_data.username, db)
+    # 判断用户是否存在
+    if not user:
+        return None
+    if not security.verify_password(user_data.password, user.password_hash):
+        return None
+
+    return user

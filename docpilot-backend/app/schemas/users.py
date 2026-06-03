@@ -59,3 +59,27 @@ class UserAuthResponse(BaseModel):
 
     token: str
     user_info: UserInfoResponse
+
+class UserLogin(BaseModel):
+    """
+    用户登录请求体
+    前端传入的数据
+    """
+
+    username: Optional[str] = Field(
+        default=None,
+        min_length=3,
+        max_length=64,
+        description="用户名，3-64位",
+    )
+
+    email: Optional[EmailStr] = Field(
+        default=None,
+        description="邮箱地址",
+    )
+
+    password: str = Field(
+        min_length=6,
+        max_length=128,
+        description="密码，至少6位",
+    )
