@@ -9,26 +9,41 @@ from app.utils import security
 from app.schemas.users import UserInfoBase, UserLogin
 import uuid
 import hashlib
+from app.models.workspaces import Workspace
+from app.models.workspace_members import WorkspaceMember
 
 
-# 根据邮件获取用户
 async def get_user_by_email(email: str, db: AsyncSession):
+    '''
+    根据邮件获取用户
+    :param email: 用户邮件
+    :param db: 数据库连接
+    :return: 用户对象
+    '''
     query = select(User).where(User.email == email)
     result = await db.execute(query)
     return result.scalar_one_or_none()
 
-# 根据用户名获取用户
-
 
 async def get_user_by_username(username: str, db: AsyncSession):
+    '''
+    根据用户名获取用户
+    :param username: 用户名
+    :param db: 数据库连接
+    :return: 用户对象
+    '''
     query = select(User).where(User.username == username)
     result = await db.execute(query)
     return result.scalar_one_or_none()
 
-# 创建用户
-
 
 async def create_user(user_data: UserInfoBase, db: AsyncSession):
+    '''
+    创建用户
+    :param user_data: 用户信息
+    :param db: 数据库连接
+    :return: 用户对象
+    '''
     # 密码加密处理 -> add
     hashed_password = security.get_hash_password(user_data.password)
     user = User(
@@ -41,10 +56,11 @@ async def create_user(user_data: UserInfoBase, db: AsyncSession):
     await db.refresh(user)  # 从数据库读回最新的 user
     return user
 
-# 生成 Token
-
 
 async def create_token(email: str, db: AsyncSession):
+    '''
+    生成 Token + 添加到数据库
+    '''
     # 生成 Token + 设置过期时间 → 查询数据库当前用户是否有 Token → 有：更新；没有：添加
     action_type = "email_verify"
     token = str(uuid.uuid4())
@@ -80,8 +96,14 @@ async def create_token(email: str, db: AsyncSession):
 
 
 async def authenticate_user(user_data: UserLogin, db: AsyncSession):
+    """
+    用户登录验证
+    :param user_data: 用户登录数据
+    :param db: 数据库连接
+    :return: 用户信息
+    """
     user = None
-    
+
     if user_data.email:
         user = await get_user_by_email(user_data.email, db)
     elif user_data.username:
@@ -93,3 +115,30 @@ async def authenticate_user(user_data: UserLogin, db: AsyncSession):
         return None
 
     return user
+
+
+async def create_workspace(user_data, db: AsyncSession):
+    """
+    创建默认工作空间
+    :param user_id: 用户ID
+    :param db: 数据库连接
+    :return: None
+    """
+    workspace = Workspace(
+        name=f"{user_data.username} 的默认空间",
+        description="系统默认创建的个人工作空间",
+        owner_user_id=user_data.id,
+        status="active",
+    )
+    db.add(workspace)
+    await db.flush()  # 刷新以获取 workspace.id
+
+    # 创建工作空间成员记录，设置为 owner 角色
+    workspace_member = WorkspaceMember(
+        workspace_id=workspace.id,
+        user_id=user_data.id,
+        role="owner"
+    )
+    db.add(workspace_member)
+
+    await db.commit()

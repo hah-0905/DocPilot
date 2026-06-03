@@ -32,6 +32,8 @@ async def register(
     user = await users.create_user(request, db)
     # 创建用户令牌
     token = await users.create_token(email=user.email, db=db)
+    # 创建工作空间
+    await users.create_workspace(user, db)
     # 构建响应数据
     response_data = UserAuthResponse(
         token=token,
