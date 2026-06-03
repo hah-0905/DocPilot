@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.users import UserAuthResponse, UserInfoBase, UserInfoResponse, UserLogin
 from app.db.session import get_db
 from app.services import users_service as users
-from app.utils.response import success_response
+from app.utils.response import ApiResponse
 from starlette import status
 
 router = APIRouter(prefix="/api/user", tags=["用户相关接口"])
@@ -39,7 +39,7 @@ async def register(
         token=token,
         user_info=UserInfoResponse.model_validate(user)
     )
-    return success_response(
+    return ApiResponse(
         message="注册成功",
         data=response_data
     )
@@ -60,7 +60,7 @@ async def login(
 
     token = await users.create_token(email=user.email, db=db)
 
-    return success_response(
+    return ApiResponse(
         message="登录成功",
         data=UserAuthResponse(
             token=token,

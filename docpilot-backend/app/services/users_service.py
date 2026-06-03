@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
+from app.db.session import get_db
 from app.models.users import AuthActionToken, User
 from starlette import status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +13,8 @@ import uuid
 import hashlib
 from app.models.workspaces import Workspace
 from app.models.workspace_members import WorkspaceMember
+
+bearer_scheme = HTTPBearer()
 
 
 async def get_user_by_email(email: str, db: AsyncSession):
@@ -62,7 +66,7 @@ async def create_token(email: str, db: AsyncSession):
     生成 Token + 添加到数据库
     '''
     # 生成 Token + 设置过期时间 → 查询数据库当前用户是否有 Token → 有：更新；没有：添加
-    action_type = "email_verify"
+    action_type = "login"
     token = str(uuid.uuid4())
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
 
@@ -93,6 +97,39 @@ async def create_token(email: str, db: AsyncSession):
         db.add(user_token)
     await db.commit()
     return token
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    token_hash = hashlib.sha256(
+        credentials.credentials.encode("utf-8")
+    ).hexdigest()
+
+    query = select(AuthActionToken).where(
+        AuthActionToken.token_hash == token_hash,
+        AuthActionToken.action_type == "login",
+        AuthActionToken.expires_at > datetime.now(),
+        AuthActionToken.used_at.is_(None),
+    )
+    result = await db.execute(query)
+    user_token = result.scalar_one_or_none()
+
+    if not user_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="无效或过期的登录凭证"
+        )
+
+    user = await db.get(User, user_token.user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="用户不存在"
+        )
+
+    return user
 
 
 async def authenticate_user(user_data: UserLogin, db: AsyncSession):
