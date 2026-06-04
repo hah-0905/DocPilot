@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import HTTPException
 from sqlalchemy import select
 
@@ -16,18 +18,22 @@ class KbService:
             name: str,
             description: str | None = None,
     ) -> KnowledgeBase:
-        workspace = await db.scalar(
-            select(Workspace).where(
-                Workspace.id == workspace_id,
-                Workspace.owner_user_id == user_id,
-                Workspace.status == "active",
-            )
+        query = select(Workspace).where(
+            Workspace.owner_user_id == user_id,
+            Workspace.status == "active",
         )
-
+        
+        if workspace_id is not None:
+            query = query.where(Workspace.id == workspace_id)
+        else:
+            query = query.order_by(Workspace.id.asc())
+        
+        workspace = await db.scalar(query)
+        
         if not workspace:
             raise HTTPException(
                 status_code=403,
-                detail="无权访问该工作空间"
+                detail="无权访问该工作空间或默认工作空间不存在"
             )
 
         kb = KnowledgeBase(
@@ -133,5 +139,6 @@ class KbService:
             )
 
         kb.status = "deleted"
+        kb.deleted_at = datetime.now()
         db.add(kb)
         await db.commit()

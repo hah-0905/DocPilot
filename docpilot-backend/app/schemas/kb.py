@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class CreateKnowledgeBaseRequest(BaseModel):
     name: str = Field(..., min_length=1)
     description: str | None = None
-    workspace_id: int = Field(..., gt=0)
+    workspace_id: int | None = Field(None, gt=0)
 
 
 class UpdateKnowledgeBaseRequest(BaseModel):
@@ -42,6 +42,6 @@ class RagSearchRequest(BaseModel):
 
 
 class RagChatRequest(BaseModel):
-    kb_id: int = Field(..., min_length=1)
+    kb_id: int = Field(..., gt=0)
     question: str = Field(..., min_length=1)
     top_k: int = Field(default=5, ge=1, le=20)
