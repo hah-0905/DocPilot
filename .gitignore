@@ -38,4 +38,5 @@ qdrant_storage/
 
 # OS
 .DS_Store
-Thumbs.db
+Thumbs.dbdocpilot-backend/.env
+.env

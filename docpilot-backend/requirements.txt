@@ -1,0 +1,17 @@
+aiomysql
+cryptography
+dashscope
+email-validator
+fastapi
+openai
+passlib[bcrypt]
+pydantic
+pydantic-settings
+pymysql
+pypdf
+python-docx
+python-dotenv
+python-jose[cryptography]
+python-multipart
+sqlalchemy
+uvicorn[standard]
