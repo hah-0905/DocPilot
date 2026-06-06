@@ -4,7 +4,6 @@ dashscope
 email-validator
 fastapi
 openai
-passlib[bcrypt]
 pydantic
 pydantic-settings
 pymysql
@@ -15,3 +14,5 @@ python-jose[cryptography]
 python-multipart
 sqlalchemy
 uvicorn[standard]
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
