@@ -191,7 +191,7 @@ export default function SettingsPage({ onNavigate, onLogout }) {
      Render
      ============================================================ */
   return (
-    <div className="kb-page">
+    <div className="kb-page st-page">
       {/* Sidebar */}
       <aside className="kb-sidebar">
         <div className="kb-sidebar__brand">
@@ -226,24 +226,6 @@ export default function SettingsPage({ onNavigate, onLogout }) {
 
       {/* Main */}
       <div className="kb-main">
-        <header className="kb-topbar">
-          <div className="kb-topbar__left">
-            <span className="kb-topbar__label">当前知识库：</span>
-            <span className="kb-topbar__value">论文知识库</span>
-            <SvgIcon name="chevron-down" size={16} />
-          </div>
-          <div className="kb-topbar__center">
-            <span className="kb-topbar__label">模型：</span>
-            <span className="kb-topbar__value">DeepSeek / GPT</span>
-            <SvgIcon name="chevron-down" size={16} />
-          </div>
-          <div className="kb-topbar__right">
-            <button className="kb-topbar__icon-btn" title="搜索"><SvgIcon name="search" size={20} /></button>
-            <span className="kb-avatar" />
-            <SvgIcon name="chevron-down" size={16} />
-          </div>
-        </header>
-
         <div className="st-content">
           <div className="st-header">
             <h1 className="st-header__title">设置</h1>

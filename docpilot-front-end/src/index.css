@@ -4490,12 +4490,17 @@ button:disabled {
    Settings Page
    ============================================================ */
 
+.st-page .kb-main {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
 .st-content {
   flex: 1;
   padding: 28px 32px;
-  overflow-y: auto;
   min-height: 0;
   max-width: 900px;
+  width: min(100%, 900px);
 }
 
 .st-header {

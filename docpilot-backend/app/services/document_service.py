@@ -7,14 +7,21 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppException
+from app.models.chunk_embeddings import ChunkEmbedding
 from app.models.documents import Document, DocumentChunk, DocumentVersion
 from app.models.kb import KnowledgeBase
 from app.models.workspaces import Workspace
 from app.services.document_parser import parse_document
+from app.services.llm_service import LLMService
 from app.services.text_splitter import split_text
+from app.services.vector_service import VectorService
 
 
 class DocumentService:
+    def __init__(self) -> None:
+        self.llm_service = LLMService()
+        self.vector_service = VectorService()
+
     async def upload_documents(
         self,
         db: AsyncSession,
@@ -97,6 +104,20 @@ class DocumentService:
             document_id: int,
     ):
         await self._get_owned_knowledge_base(db, user_id, kb_id)
+
+        result = await db.execute(
+            select(ChunkEmbedding.vector_id).where(
+                ChunkEmbedding.kb_id == kb_id,
+                ChunkEmbedding.chunk_id.in_(
+                    select(DocumentChunk.id).where(
+                        DocumentChunk.document_id == document_id,
+                        DocumentChunk.kb_id == kb_id,
+                    )
+                ),
+            )
+        )
+        vector_ids = list(result.scalars().all())
+        await self.vector_service.delete_vectors(vector_ids)
 
         await db.execute(
             delete(DocumentVersion).where(
@@ -216,18 +237,45 @@ class DocumentService:
 
         for index, chunk in enumerate(chunks, start=1):
             chunk_hash = hashlib.sha256(chunk.encode("utf-8")).hexdigest()
+            document_chunk = DocumentChunk(
+                kb_id=kb_id,
+                document_id=document.id,
+                version_id=version.id,
+                chunk_no=index,
+                chunk_uid=str(uuid.uuid4()),
+                content=chunk,
+                content_hash=chunk_hash,
+                char_count=len(chunk),
+                token_count=len(chunk),
+                metadata_={"file_sha256": file_sha256},
+            )
+            db.add(document_chunk)
+            await db.flush()
+
+            embedding = await self.llm_service.embed_text(chunk)
+            vector_id = str(document_chunk.id)
+            await self.vector_service.upsert_chunk_vector(
+                vector_id=vector_id,
+                embedding=embedding,
+                metadata={
+                    "kb_id": kb_id,
+                    "chunk_id": document_chunk.id,
+                    "document_id": document.id,
+                    "content_hash": chunk_hash,
+                },
+            )
+
             db.add(
-                DocumentChunk(
+                ChunkEmbedding(
                     kb_id=kb_id,
-                    document_id=document.id,
-                    version_id=version.id,
-                    chunk_no=index,
-                    chunk_uid=str(uuid.uuid4()),
-                    content=chunk,
+                    chunk_id=document_chunk.id,
+                    vector_store_type=self.vector_service.vector_store_type,
+                    vector_collection=self.vector_service.vector_collection,
+                    vector_id=vector_id,
+                    embedding_model=self.llm_service.embedding_model,
+                    embedding_dim=len(embedding),
                     content_hash=chunk_hash,
-                    char_count=len(chunk),
-                    token_count=len(chunk),
-                    metadata_={"file_sha256": file_sha256},
+                    status="active",
                 )
             )
 

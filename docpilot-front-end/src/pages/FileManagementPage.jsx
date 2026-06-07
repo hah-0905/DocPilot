@@ -80,6 +80,22 @@ function formatTime(t) {
   return t.replace("T", " ").slice(0, 16);
 }
 
+function normalizeKnowledgeBases(payload) {
+  const list = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.items)
+      ? payload.items
+      : Array.isArray(payload?.list)
+        ? payload.list
+        : Array.isArray(payload?.records)
+          ? payload.records
+          : [];
+
+  return list
+    .filter((kb) => kb && kb.id !== undefined && kb.id !== null && kb.name)
+    .map((kb) => ({ id: String(kb.id), name: kb.name }));
+}
+
 /* ===== SvgIcon ===== */
 function SvgIcon({ name, size = 20 }) {
   const s = size;
@@ -130,27 +146,32 @@ export default function FileManagementPage({ onNavigate }) {
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
+    let realKbList = [];
     try {
       // Try real API first
       const [realFiles, realKbs] = await Promise.all([getFiles(), getKnowledgeBases()]).catch(() => [null, null]);
       // eslint-disable-next-line no-unused-expressions
       realFiles;
-      if (realKbs && Array.isArray(realKbs)) {
-        setKbs(realKbs.map((k) => ({ id: String(k.id), name: k.name })));
-      }
+      realKbList = normalizeKnowledgeBases(realKbs);
     } catch (_e) { /* ignore */ }
 
     // TODO: remove mock fallback when backend APIs are available
     setFiles(MOCK_FILES);
-    if (kbs.length === 0) {
-      // Derive KB names from mock data
-      const names = [...new Set(MOCK_FILES.map((f) => f.kbName))];
-      setKbs(names.map((n, i) => ({ id: String(i + 1), name: n })));
-    }
+    setKbs(realKbList);
     setLoading(false);
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    if (kbFilter !== "all" && !kbs.some((kb) => kb.name === kbFilter)) {
+      setKbFilter("all");
+      setPage(1);
+    }
+    if (uploadKbId && !kbs.some((kb) => kb.id === uploadKbId)) {
+      setUploadKbId("");
+    }
+  }, [kbFilter, kbs, uploadKbId]);
 
   // ---- Search debounce ----
   const [searchInput, setSearchInput] = useState("");

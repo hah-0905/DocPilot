@@ -1,22 +1,21 @@
 from typing import List
-
-from sqlalchemy import select
-
 from app.utils.response import ApiResponse
 from app.services.kb_service import KbService
 from app.services.users_service import get_current_user
 from app.db.session import get_db
 from fastapi import APIRouter, Depends, File, UploadFile
 from app.models.users import User
-from app.schemas.kb import CreateKnowledgeBaseRequest, KnowledgeBaseResponse, UpdateKnowledgeBaseRequest
+from app.schemas.kb import CreateKnowledgeBaseRequest, KnowledgeBaseResponse, RagChatRequest, UpdateKnowledgeBaseRequest
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.workspaces import Workspace
 from app.services.document_service import DocumentService
+from app.services.rag_service import RagService
 
 router = APIRouter(prefix="/api/kb", tags=["知识库相关接口"])
 
 kb_service = KbService()
 document_service = DocumentService()
+rag_service = RagService()
 
 
 @router.post("/knowledge-bases")
@@ -171,6 +170,7 @@ async def list_documents(
 
     return ApiResponse(data=data)
 
+
 @router.delete("/knowledge-bases/{kb_id}/documents/{document_id}")
 async def delete_document(
     document_id: int,
@@ -181,18 +181,37 @@ async def delete_document(
     """
     删除文档
     """
-    deteled = await document_service.delete_document(
+    deleted = await document_service.delete_document(
         db,
         user_id=current_user.id,
         kb_id=kb_id,
         document_id=document_id
     )
-    if not deteled:
+    if not deleted:
         return ApiResponse(
             message="删除失败",
-            deleted = False
+            deleted=False
         )
     return ApiResponse(
-        document_id = document_id,
-        deleted = True
-        )
+        document_id=document_id,
+        deleted=True
+    )
+
+@router.post("/knowledge-bases/{kb_id}/chat")
+async def chat(
+    request: RagChatRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    '''
+    rag 聊天
+    '''
+    result = await rag_service.rag_chat(
+        db,
+        kb_id=request.kb_id,
+        question=request.question,
+        top_k=request.top_k
+    )
+
+    return ApiResponse(
+        data=result
+    )
