@@ -1,5 +1,5 @@
 from io import BytesIO
-
+from docx import Document as DocDocument
 from pypdf import PdfReader
 
 
@@ -16,6 +16,10 @@ def parse_pdf(file_bytes: bytes) -> str:
 
     return "\n".join(texts).strip()
 
+def parse_docx(file_bytes: bytes) -> str:
+    doc = DocDocument(BytesIO(file_bytes))
+    return "\n".join([p.text for p in doc.paragraphs]).strip()
+
 
 def parse_document(filename: str, file_bytes: bytes) -> str:
     lower_name = filename.lower()
@@ -25,5 +29,8 @@ def parse_document(filename: str, file_bytes: bytes) -> str:
 
     if lower_name.endswith(".pdf"):
         return parse_pdf(file_bytes)
+    
+    if lower_name.endswith(".docx"):
+        return parse_docx(file_bytes)
 
     raise ValueError("Unsupported file type. Only pdf, txt, md are supported.")

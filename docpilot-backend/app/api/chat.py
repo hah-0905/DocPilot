@@ -66,7 +66,7 @@ async def create_chat_completions(
     )
 
 
-@router.post("/sessions")
+@router.get("/sessions")
 async def list_chat_sessions(
     db: AsyncSession = Depends(get_db)
 ) -> ApiResponse:

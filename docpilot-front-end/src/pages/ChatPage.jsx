@@ -143,6 +143,22 @@ export default function ChatPage({ onNavigate }) {
     ]);
   };
 
+  useEffect(() => {
+    window.addEventListener("docpilot:new-chat", startNewChat);
+    return () => window.removeEventListener("docpilot:new-chat", startNewChat);
+  }, []);
+
+  useEffect(() => {
+    const handleDeletedSession = (event) => {
+      if (String(event.detail?.session_id) === String(sessionId)) {
+        startNewChat();
+      }
+    };
+
+    window.addEventListener("docpilot:chat-session-deleted", handleDeletedSession);
+    return () => window.removeEventListener("docpilot:chat-session-deleted", handleDeletedSession);
+  }, [sessionId]);
+
   const openChatSession = async (session) => {
     setSessionId(session.session_id);
     setInput("");
@@ -167,6 +183,28 @@ export default function ChatPage({ onNavigate }) {
     }
   };
 
+  useEffect(() => {
+    const openPendingSession = () => {
+      const raw = sessionStorage.getItem("docpilot_pending_chat_session");
+      if (!raw) return;
+      sessionStorage.removeItem("docpilot_pending_chat_session");
+      try {
+        const session = JSON.parse(raw);
+        if (session?.session_id) openChatSession(session);
+      } catch (_err) {
+        // Ignore stale local navigation payloads.
+      }
+    };
+
+    const handleOpenSession = (event) => {
+      if (event.detail?.session_id) openChatSession(event.detail);
+    };
+
+    openPendingSession();
+    window.addEventListener("docpilot:open-chat-session", handleOpenSession);
+    return () => window.removeEventListener("docpilot:open-chat-session", handleOpenSession);
+  }, [chatSessions]);
+
   const handleDeleteSession = async (event, session) => {
     event.preventDefault();
     event.stopPropagation();
@@ -177,6 +215,7 @@ export default function ChatPage({ onNavigate }) {
       if (String(session.session_id) === String(sessionId)) {
         startNewChat();
       }
+      window.dispatchEvent(new CustomEvent("docpilot:chat-sessions-changed"));
     } catch (err) {
       setError(err.message || "删除对话失败");
     }
@@ -236,6 +275,7 @@ export default function ChatPage({ onNavigate }) {
           );
         }
         refreshChatSessions();
+        window.dispatchEvent(new CustomEvent("docpilot:chat-sessions-changed"));
         return;
       }
 
@@ -256,6 +296,7 @@ export default function ChatPage({ onNavigate }) {
         },
       ]);
       refreshChatSessions();
+      window.dispatchEvent(new CustomEvent("docpilot:chat-sessions-changed"));
     } catch (err) {
       setError(err.message || "发送失败");
       setMessages((prev) => [

@@ -1,9 +1,10 @@
+from datetime import datetime, timezone
 import hashlib
 import uuid
 from pathlib import Path
 
 from fastapi import UploadFile
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppException
@@ -117,26 +118,38 @@ class DocumentService:
             )
         )
         vector_ids = list(result.scalars().all())
-        await self.vector_service.delete_vectors(vector_ids)
+        if vector_ids:
+            await self.vector_service.delete_vectors(vector_ids)
+
+        deleted_at = datetime.now(timezone.utc)
 
         await db.execute(
-            delete(DocumentVersion).where(
-                DocumentVersion.document_id == document_id,
-            )
-        )
-
-        await db.execute(
-            delete(DocumentChunk).where(
+            update(DocumentChunk).where(
                 DocumentChunk.document_id == document_id,
+                DocumentChunk.kb_id == kb_id,
+            ).values(
+                enabled=False,
             )
         )
 
         await db.execute(
-            delete(Document).where(
+            update(DocumentVersion).where(
+                DocumentVersion.document_id == document_id,
+            ).values(
+                status="deleted",
+            )
+        )
+
+        await db.execute(
+            update(Document).where(
                 Document.id == document_id,
                 Document.kb_id == kb_id,
+            ).values(
+                deleted_at=deleted_at,
+                enabled=False,
             )
         )
+
         await db.commit()
         return True
 
