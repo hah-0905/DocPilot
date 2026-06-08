@@ -51,7 +51,31 @@ function toUiMessages(sessionId, messages) {
     id: `${sessionId}-${index}-${message.role}`,
     role: message.role,
     content: message.content,
+    chunks: normalizeUsedChunks(message.chunks || message.used_chunks || message.references || message.metadata?.used_chunks || []),
   }));
+}
+
+function normalizeUsedChunks(chunks) {
+  if (!Array.isArray(chunks)) return [];
+  return chunks
+    .map((chunk, index) => ({
+      id: String(chunk.chunk_id ?? chunk.id ?? index + 1),
+      documentId: chunk.document_id ?? chunk.documentId ?? chunk.metadata?.document_id ?? "--",
+      index: chunk.chunk_index ?? chunk.chunk_no ?? chunk.index ?? index + 1,
+      score: chunk.score,
+      content: chunk.content || chunk.text || "",
+    }))
+    .filter((chunk) => chunk.content || chunk.id);
+}
+
+function getLatestAssistantChunks(messages) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role === "assistant" && Array.isArray(message.chunks) && message.chunks.length > 0) {
+      return message.chunks;
+    }
+  }
+  return [];
 }
 
 export default function ChatPage({ onNavigate }) {
@@ -72,6 +96,7 @@ export default function ChatPage({ onNavigate }) {
   const [selectedKbId, setSelectedKbId] = useState("");
   const [kbLoading, setKbLoading] = useState(false);
   const [streamMode, setStreamMode] = useState(false);
+  const [usedChunks, setUsedChunks] = useState([]);
   const endRef = useRef(null);
 
   const canSend = input.trim().length > 0 && !sending;
@@ -134,6 +159,7 @@ export default function ChatPage({ onNavigate }) {
     setSessionId(createSessionId());
     setInput("");
     setError("");
+    setUsedChunks([]);
     setMessages([
       {
         id: "welcome",
@@ -167,6 +193,7 @@ export default function ChatPage({ onNavigate }) {
     try {
       const data = await getChatMessages(session.session_id);
       const historyMessages = Array.isArray(data?.messages) ? data.messages : [];
+      const historyUiMessages = toUiMessages(session.session_id, historyMessages);
       setMessages(
         historyMessages.length
           ? toUiMessages(session.session_id, historyMessages)
@@ -178,6 +205,7 @@ export default function ChatPage({ onNavigate }) {
               },
             ]
       );
+      setUsedChunks(getLatestAssistantChunks(historyUiMessages));
     } catch (err) {
       setError(err.message || "加载历史消息失败");
     }
@@ -234,6 +262,7 @@ export default function ChatPage({ onNavigate }) {
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setError("");
+    setUsedChunks([]);
     setSending(true);
 
     try {
@@ -253,7 +282,10 @@ export default function ChatPage({ onNavigate }) {
         await streamChatCompletion({
           sessionId,
           message: text,
-          onChunk: (chunk) => {
+          kbId: selectedKbId,
+          onChunk: (chunk, chunks) => {
+            const normalizedChunks = normalizeUsedChunks(chunks);
+            if (normalizedChunks.length > 0) setUsedChunks(normalizedChunks);
             streamedAnswer += chunk;
             setMessages((prev) =>
               prev.map((message) =>
@@ -283,10 +315,13 @@ export default function ChatPage({ onNavigate }) {
         sessionId,
         message: text,
         stream: false,
+        kbId: selectedKbId,
       });
       if (result?.session_id) {
         setSessionId(result.session_id);
       }
+      const normalizedChunks = normalizeUsedChunks(result?.used_chunks || result?.chunks || result?.references || []);
+      setUsedChunks(normalizedChunks);
       setMessages((prev) => [
         ...prev,
         {
@@ -427,6 +462,7 @@ export default function ChatPage({ onNavigate }) {
         </header>
 
         <main className="chat-main">
+          <div className="chat-layout">
           <section className="chat-panel">
             <div className="chat-hero">
               <span className="chat-hero__icon"><SvgIcon name="sparkles" size={24} /></span>
@@ -516,6 +552,37 @@ export default function ChatPage({ onNavigate }) {
               </div>
             </div>
           </section>
+          <aside className="chat-chunks-panel" aria-label="Used chunks">
+            <div className="chat-chunks-panel__header">
+              <div>
+                <h2>引用切片</h2>
+                <p>本轮回答使用的 chunks</p>
+              </div>
+              <span>{usedChunks.length}</span>
+            </div>
+            <div className="chat-chunks-list">
+              {usedChunks.length === 0 ? (
+                <div className="chat-chunks-empty">
+                  <p>暂无引用切片</p>
+                  <span>发送知识库问题后，这里会显示检索到的 chunks。</span>
+                </div>
+              ) : (
+                usedChunks.map((chunk, index) => (
+                  <article className="chat-chunk-card" key={`${chunk.id}-${index}`}>
+                    <div className="chat-chunk-card__top">
+                      <span>Chunk #{chunk.index}</span>
+                      {chunk.score !== undefined && chunk.score !== null && (
+                        <em>{Number(chunk.score).toFixed(3)}</em>
+                      )}
+                    </div>
+                    <div className="chat-chunk-card__meta">文档 ID：{chunk.documentId}</div>
+                    <p>{chunk.content}</p>
+                  </article>
+                ))
+              )}
+            </div>
+          </aside>
+          </div>
         </main>
       </div>
     </div>

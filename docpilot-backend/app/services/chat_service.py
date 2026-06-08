@@ -9,11 +9,13 @@ from app.models.chat import ChatMessage, ChatSession, ChatSessionKb
 from app.models.users import User
 from app.models.workspaces import Workspace
 from app.services.llm_service import LLMService
+from app.services.rag_service import RagService
 
 
 class ChatService:
     def __init__(self) -> None:
         self.llm_service = LLMService()
+        self.rag_service = RagService()
 
     @staticmethod
     def build_session_title(message: str) -> str:
@@ -136,6 +138,7 @@ class ChatService:
         role: str,
         content: str,
         latency_ms: int | None = None,
+        chunks: list[dict] | None = None,
     ) -> None:
         db.add(
             ChatMessage(
@@ -144,6 +147,7 @@ class ChatService:
                 content=content,
                 model_name=self.llm_service.model if role == "assistant" else None,
                 latency_ms=latency_ms,
+                metadata_={"used_chunks": chunks or []} if chunks is not None else None,
             )
         )
 
@@ -152,33 +156,75 @@ class ChatService:
         db: AsyncSession,
         session_id: str,
         message: str,
+        kb_id: int | None = None,
     ) -> dict:
+        # 1. 获取历史消息
         chat_session = await self._get_or_create_session(db, session_id, message)
         history = await self._get_history(db, chat_session.id)
-        messages = self._build_messages(history, message)
+
+        # 2. 检索相关 chunks
+        retrieved_chunks = []
+        if kb_id:
+            retrieved_chunks = await self.rag_service.search(
+                db,
+                kb_id=kb_id,
+                query=message,
+                top_k=5,
+            )
+
+        used_chunks = [
+            {
+                "chunk_id": str(chunk.get("chunk_id") or chunk.get("id") or ""),
+                "document_id": str(chunk.get("document_id") or ""),
+                "content": chunk.get("content") or "",
+                "metadata": chunk.get("metadata") or {},
+                "score": chunk.get("score"),
+            }
+            for chunk in retrieved_chunks
+        ]
+
+        # 3. 构造 RAG 上下文
+        context_text = "\n\n".join(
+            [
+                f"[来源 {idx + 1}]\n{chunk['content']}"
+                for idx, chunk in enumerate(used_chunks)
+            ]
+        )
+
+        rag_message = f"""请基于以下知识库内容回答用户问题。知识库内容：{context_text}用户问题：{message}""".strip()
+
+        # 4. 构造 LLM 消息
+        messages = self._build_messages(history, rag_message)
         start_time = time.perf_counter()
 
+        # 5. 调用大模型
         answer = await self.llm_service.chat(messages)
         latency_ms = int((time.perf_counter() - start_time) * 1000)
 
+        # 6. 保存用户消息
         await self._save_message(
             db=db,
             session_id=chat_session.id,
             role="user",
             content=message,
         )
+
+        # 7. 保存 assistant 消息，并保存 chunks
         await self._save_message(
             db=db,
             session_id=chat_session.id,
             role="assistant",
             content=answer,
             latency_ms=latency_ms,
+            chunks=used_chunks,
         )
         await db.commit()
 
+        # 8. 返回给前端
         return {
             "session_id": chat_session.id,
             "answer": answer,
+            "used_chunks": used_chunks,
         }
 
     async def stream_chat(
@@ -186,12 +232,43 @@ class ChatService:
         db: AsyncSession,
         session_id: str,
         message: str,
-    ) -> AsyncGenerator[str, None]:
+        kb_id: int | None = None,
+    ) -> AsyncGenerator[Any, None]:
         chat_session = await self._get_or_create_session(db, session_id, message)
         history = await self._get_history(db, chat_session.id)
-        messages = self._build_messages(history, message)
+
+        retrieved_chunks = []
+        if kb_id:
+            retrieved_chunks = await self.rag_service.search(
+                db,
+                kb_id=kb_id,
+                query=message,
+                top_k=5,
+            )
+
+        used_chunks = [
+            {
+                "chunk_id": str(chunk.get("chunk_id") or chunk.get("id") or ""),
+                "document_id": str(chunk.get("document_id") or ""),
+                "content": chunk.get("content") or "",
+                "metadata": chunk.get("metadata") or {},
+                "score": chunk.get("score"),
+            }
+            for chunk in retrieved_chunks
+        ]
+
+        context_text = "\n\n".join(
+            [
+                f"[来源 {idx + 1}]\n{chunk['content']}"
+                for idx, chunk in enumerate(used_chunks)
+            ]
+        )
+        rag_message = f"""请基于以下知识库内容回答用户问题。知识库内容：{context_text}用户问题：{message}""".strip()
+        messages = self._build_messages(history, rag_message)
         answer_chunks: list[str] = []
         start_time = time.perf_counter()
+
+        yield {"text": "", "used_chunks": used_chunks}
 
         async for chunk in self.llm_service.stream_chat(messages):
             answer_chunks.append(chunk)
@@ -212,6 +289,7 @@ class ChatService:
             role="assistant",
             content=full_answer,
             latency_ms=latency_ms,
+            chunks=used_chunks,
         )
         await db.commit()
 
@@ -219,8 +297,25 @@ class ChatService:
         self,
         db: AsyncSession,
         session_id: str | int,
-    ) -> list[dict[str, str]]:
-        return await self._get_history(db, session_id)
+    ) -> list[dict[str, Any]]:
+        parsed_session_id = self._parse_session_id(session_id)
+        if parsed_session_id is None:
+            return []
+
+        result = await db.execute(
+            select(ChatMessage)
+            .where(ChatMessage.session_id == parsed_session_id)
+            .order_by(ChatMessage.created_at.asc())
+        )
+        messages = result.scalars().all()
+        return [
+            {
+                "role": message.role,
+                "content": message.content,
+                "chunks": (message.metadata_ or {}).get("used_chunks", []),
+            }
+            for message in messages
+        ]
 
     async def delete_session(
         self,

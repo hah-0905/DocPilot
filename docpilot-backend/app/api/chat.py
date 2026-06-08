@@ -1,3 +1,5 @@
+import json
+
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
@@ -39,10 +41,15 @@ async def create_chat_completions(
             db=db,
             session_id=request.session_id,
             message=request.message,
+            kb_id=request.kb_id,
         )
 
         return ApiResponse(
-            data=result
+            data={
+                "answer": result["answer"],
+                "session_id": result.get("session_id"),
+                "used_chunks": result.get("used_chunks", []),
+            }
         )
 
     async def event_generator():
@@ -51,8 +58,14 @@ async def create_chat_completions(
                 db=db,
                 session_id=request.session_id,
                 message=request.message,
+                kb_id=request.kb_id,
             ):
-                yield f"data: {chunk}\n\n"
+                # chunk 可以改成 dict {"text": "...", "used_chunks": [...]}
+                if isinstance(chunk, dict):
+                    yield f"data: {json.dumps(chunk)}\n\n"
+                else:
+                    # 兼容原来的字符串
+                    yield f"data: {json.dumps({'text': chunk, 'used_chunks': []})}\n\n"
 
             yield "data: [DONE]\n\n"
 
@@ -103,8 +116,8 @@ async def list_chat_sessions(
                 {
                     "session_id": session.id,
                     "title": session.title,
-                        "created_at": session.created_at.isoformat(),
-                        "status": session.status
+                    "created_at": session.created_at.isoformat(),
+                    "status": session.status
                 }
                 for session in sessions
             ]

@@ -36,18 +36,19 @@ async function request(path, options = {}) {
   return payload?.data ?? payload;
 }
 
-export async function createChatCompletion({ sessionId, message, stream = false }) {
+export async function createChatCompletion({ sessionId, message, stream = false, kbId }) {
   return request("/api/chat/completions", {
     method: "POST",
     body: JSON.stringify({
       session_id: sessionId,
       message,
       stream,
+      kb_id: kbId ? Number(kbId) : undefined,
     }),
   });
 }
 
-export async function streamChatCompletion({ sessionId, message, onChunk }) {
+export async function streamChatCompletion({ sessionId, message, kbId, onChunk }) {
   const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
     method: "POST",
     headers: getAuthHeaders(),
@@ -55,6 +56,7 @@ export async function streamChatCompletion({ sessionId, message, onChunk }) {
       session_id: sessionId,
       message,
       stream: true,
+      kb_id: kbId ? Number(kbId) : undefined,
     }),
   });
 
@@ -93,7 +95,16 @@ export async function streamChatCompletion({ sessionId, message, onChunk }) {
 
       if (!data || data === "[DONE]") continue;
       if (eventName === "error") throw new Error(data);
-      onChunk?.(data);
+      try {
+        const payload = JSON.parse(data);
+        if (payload && typeof payload === "object") {
+          onChunk?.(payload.text || "", payload.used_chunks || payload.chunks || []);
+        } else {
+          onChunk?.(String(payload), []);
+        }
+      } catch (_err) {
+        onChunk?.(data, []);
+      }
     }
   }
 }
