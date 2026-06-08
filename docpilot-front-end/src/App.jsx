@@ -5,10 +5,11 @@ import KnowledgeBasePage from "./pages/KnowledgeBasePage";
 import KnowledgeBaseDetailPage from "./pages/KnowledgeBaseDetailPage";
 import FileManagementPage from "./pages/FileManagementPage";
 import SettingsPage from "./pages/SettingsPage";
+import ChatPage from "./pages/ChatPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 
-const KNOWN_PATHS = new Set(["/", "/login", "/register", "/dashboard", "/knowledge-base", "/files", "/settings"]);
+const KNOWN_PATHS = new Set(["/", "/login", "/register", "/dashboard", "/knowledge-base", "/files", "/settings", "/chat"]);
 
 /** Check if path is a KB detail route: /knowledge-base/<id> */
 function isKBDetailPath(path) {
@@ -47,7 +48,7 @@ export default function App() {
 
   useEffect(() => {
     const isAuthPage = path === "/login" || path === "/register";
-    const isProtectedPage = path === "/knowledge-base" || isKBDetailPath(path) || path === "/dashboard" || path === "/files" || path === "/settings";
+    const isProtectedPage = path === "/knowledge-base" || isKBDetailPath(path) || path === "/dashboard" || path === "/files" || path === "/settings" || path === "/chat";
 
     if (path === "/") {
       navigate(auth?.token ? "/knowledge-base" : "/login", { replace: true });
@@ -98,6 +99,10 @@ export default function App() {
 
     if (path === "/settings" && auth?.token) {
       return <SettingsPage onNavigate={navigate} onLogout={handleLogout} />;
+    }
+
+    if (path === "/chat" && auth?.token) {
+      return <ChatPage onNavigate={navigate} />;
     }
 
     if (path === "/dashboard" && auth?.token) {

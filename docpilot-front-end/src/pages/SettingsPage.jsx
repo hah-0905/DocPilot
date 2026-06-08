@@ -198,7 +198,7 @@ export default function SettingsPage({ onNavigate, onLogout }) {
           <span className="kb-sidebar__logo" aria-hidden="true"><span /></span>
           <span className="kb-sidebar__name">DocPilot</span>
         </div>
-        <button className="kb-sidebar__new-btn"><SvgIcon name="plus" size={18} /><span>新建对话</span></button>
+        <button className="kb-sidebar__new-btn" onClick={() => onNavigate("/chat")}><SvgIcon name="plus" size={18} /><span>新建对话</span></button>
         <nav className="kb-sidebar__nav">
           <a className="kb-nav-item" href="#" onClick={(e) => { e.preventDefault(); onNavigate("/knowledge-base"); }}>
             <SvgIcon name="layers" size={18} /><span>知识库</span>

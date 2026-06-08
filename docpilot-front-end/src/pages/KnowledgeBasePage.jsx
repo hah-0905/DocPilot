@@ -300,7 +300,7 @@ export default function KnowledgeBasePage({ onNavigate }) {
         </div>
 
         {/* New chat button */}
-        <button className="kb-sidebar__new-btn">
+        <button className="kb-sidebar__new-btn" onClick={() => onNavigate("/chat")}>
           <SvgIcon name="plus" size={18} />
           <span>新建对话</span>
         </button>

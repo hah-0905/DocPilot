@@ -398,7 +398,7 @@ export default function KnowledgeBaseDetailPage({ onNavigate }) {
           <span className="kb-sidebar__logo" aria-hidden="true"><span /></span>
           <span className="kb-sidebar__name">DocPilot</span>
         </div>
-        <button className="kb-sidebar__new-btn">
+        <button className="kb-sidebar__new-btn" onClick={() => onNavigate("/chat")}>
           <SvgIcon name="plus" size={18} />
           <span>新建对话</span>
         </button>
