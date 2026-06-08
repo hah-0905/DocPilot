@@ -1,5 +1,13 @@
 # DocPilot
 
+![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688?style=flat-square&logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-Frontend-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-Dev_Server-646CFF?style=flat-square&logo=vite&logoColor=white)
+![MySQL](https://img.shields.io/badge/MySQL-8.4-4479A1?style=flat-square&logo=mysql&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)
+
 DocPilot 是一个面向多知识库场景的智能文档问答与报告生成平台。项目基于 FastAPI、React、MySQL 与 RAG（Retrieval-Augmented Generation）技术构建，支持文档上传、文档解析、文本切分、知识库管理、语义检索、智能问答和报告生成等能力。
 
 本项目定位为一个完整的 AI 应用工程实践项目，重点展示从后端 API、数据库建模、文档处理、向量检索、大模型调用到前端交互页面的端到端开发能力。
