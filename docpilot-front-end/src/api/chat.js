@@ -99,9 +99,7 @@ export async function streamChatCompletion({ sessionId, message, onChunk }) {
 }
 
 export async function listChatSessions() {
-  return request("/api/chat/sessions", {
-    method: "POST",
-  });
+  return request("/api/chat/sessions", { method: "GET" });
 }
 
 export async function getChatMessages(sessionId) {

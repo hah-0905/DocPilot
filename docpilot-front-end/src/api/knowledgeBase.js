@@ -4,23 +4,19 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, ""
 
 function getAuthHeaders() {
   const auth = getStoredAuth();
-  if (!auth?.token) {
-    throw new Error("未登录");
-  }
+  if (!auth?.token) throw new Error("未登录");
   return {
     Authorization: `Bearer ${auth.token}`,
     "Content-Type": "application/json",
   };
 }
 
-/** 通用请求封装 */
 async function request(path, options = {}) {
   const headers = { ...getAuthHeaders(), ...(options.headers || {}) };
   const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    // Handle 401/403 — signal unauthorized
     if (response.status === 401 || response.status === 403) {
       const err = new Error(payload?.detail || "登录已失效，请重新登录");
       err.code = response.status;
@@ -33,7 +29,6 @@ async function request(path, options = {}) {
     );
   }
 
-  // ApiResponse wrapper: { code, message, data }
   if (payload?.code !== undefined && payload.code !== 200) {
     throw new Error(payload.message || "请求失败");
   }
@@ -41,33 +36,14 @@ async function request(path, options = {}) {
   return payload?.data ?? payload;
 }
 
-/* ===============================================================
-   知识库接口
-   Backend: GET /api/kb/knowledge-bases → list
-            POST /api/kb/knowledge-bases → create
-            DELETE /api/kb/knowledge-bases/{id} → soft delete
-            GET /api/kb/knowledge-bases/{id} → detail
-   =============================================================== */
-
-/**
- * 获取知识库列表
- * 后端无 search/sort 参数，前端本地过滤排序
- */
 export async function getKnowledgeBases() {
   return request("/api/kb/knowledge-bases");
 }
 
-/**
- * 获取单个知识库详情
- */
 export async function getKnowledgeBase(id) {
   return request(`/api/kb/knowledge-bases/${id}`);
 }
 
-/**
- * 创建知识库
- * @param {{ name: string, description?: string, workspace_id: number }} data
- */
 export async function createKnowledgeBase(data) {
   return request("/api/kb/knowledge-bases", {
     method: "POST",
@@ -75,16 +51,10 @@ export async function createKnowledgeBase(data) {
   });
 }
 
-/**
- * 删除知识库（软删除）
- */
 export async function deleteKnowledgeBase(id) {
   return request(`/api/kb/knowledge-bases/${id}`, { method: "DELETE" });
 }
 
-/**
- * 更新知识库
- */
 export async function updateKnowledgeBase(id, data) {
   return request(`/api/kb/knowledge-bases/${id}`, {
     method: "PUT",
@@ -92,35 +62,21 @@ export async function updateKnowledgeBase(id, data) {
   });
 }
 
-/* ===============================================================
-   文档上传接口
-   Backend: POST /api/kb/knowledge-bases/{kb_id}/documents/upload
-           → multipart/form-data, field name: "files"
-           → returns array of { id, title, original_file_name, file_ext,
-             size_bytes, parse_status, index_status, chunk_count, ... }
-   =============================================================== */
-
-/**
- * 上传文件到知识库
- * @param {number|string} kbId - 知识库ID
- * @param {File|File[]} files - 单个文件或文件数组
- * @returns {Promise<Array>} 上传结果数组
- */
 export async function uploadKnowledgeBaseFile(kbId, files) {
   const fileArray = Array.isArray(files) ? files : [files];
   if (fileArray.length === 0) throw new Error("请选择文件");
+
+  const auth = getStoredAuth();
+  if (!auth?.token) throw new Error("未登录");
 
   const formData = new FormData();
   for (const file of fileArray) {
     formData.append("files", file);
   }
 
-  const headers = { Authorization: `Bearer ${getStoredAuth()?.token}` };
-  // Do NOT set Content-Type — browser sets it with boundary for FormData
-
   const response = await fetch(`${API_BASE_URL}/api/kb/knowledge-bases/${kbId}/documents/upload`, {
     method: "POST",
-    headers,
+    headers: { Authorization: `Bearer ${auth.token}` },
     body: formData,
   });
 
@@ -128,7 +84,7 @@ export async function uploadKnowledgeBaseFile(kbId, files) {
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
-      const err = new Error(payload?.detail || "登录已失效");
+      const err = new Error(payload?.detail || "登录已失效，请重新登录");
       err.code = response.status;
       throw err;
     }
@@ -146,46 +102,80 @@ export async function uploadKnowledgeBaseFile(kbId, files) {
   return payload?.data ?? payload;
 }
 
-/** 重建知识库索引 */
 export async function rebuildKnowledgeBaseIndex(kbId) {
-  // TODO: replace with real rebuild endpoint when available
   console.log(`[TODO] rebuild index for KB ${kbId}`);
-  await new Promise((r) => setTimeout(r, 500));
+  await new Promise((resolve) => setTimeout(resolve, 500));
   return { success: true };
 }
 
-/** 获取知识库统计概览 */
 export async function getKnowledgeBaseStats() {
   return null;
 }
 
-/* ===============================================================
-   文档相关接口
-   Backend: GET /api/kb/knowledge-bases/{kb_id}/documents → list
-           POST /api/kb/knowledge-bases/{kb_id}/documents/upload → upload
-           DELETE /api/kb/knowledge-bases/{kb_id}/documents/{document_id} → delete
-   =============================================================== */
-
-/**
- * 获取知识库文档列表
- * @returns {Promise<Array>} [{ id, name, type, status, updated_at, chunks }]
- */
 export async function getDocuments(kbId) {
   return request(`/api/kb/knowledge-bases/${kbId}/documents`);
 }
 
-/**
- * 删除文档
- * @param {number|string} kbId
- * @param {number|string} documentId
- */
+export async function getDocumentChunks(kbId, documentId) {
+  return request(`/api/kb/knowledge-bases/${kbId}/documents/${documentId}/chunks`);
+}
+
 export async function deleteDocument(kbId, documentId) {
   return request(`/api/kb/knowledge-bases/${kbId}/documents/${documentId}`, {
     method: "DELETE",
   });
 }
 
-/** 重试文档处理 (TODO: endpoint not available yet) */
+function getDownloadFileName(response, fallbackName) {
+  const disposition = response.headers.get("Content-Disposition") || response.headers.get("content-disposition") || "";
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) return decodeURIComponent(utf8Match[1]);
+
+  const plainMatch = disposition.match(/filename="?([^";]+)"?/i);
+  if (plainMatch?.[1]) return plainMatch[1];
+
+  return fallbackName || "download";
+}
+
+export async function downloadDocument(kbId, documentId, fallbackName) {
+  const auth = getStoredAuth();
+  if (!auth?.token) throw new Error("未登录");
+
+  const response = await fetch(`${API_BASE_URL}/api/kb/knowledge-bases/${kbId}/documents/${documentId}/download`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${auth.token}` },
+  });
+
+  const contentType = response.headers.get("Content-Type") || "";
+  if (!response.ok || contentType.includes("application/json")) {
+    const payload = await response.json().catch(() => ({}));
+    const reason = typeof payload.detail === "string"
+      ? payload.detail
+      : payload?.message || `HTTP ${response.status}`;
+
+    throw new Error(
+      reason === "File not found"
+        ? "下载失败：服务器未找到原始文件"
+        : reason === "Document version not found"
+          ? "下载失败：文档版本不存在"
+          : reason === "Original file not saved"
+            ? "下载失败：原始文件未保存"
+            : `下载失败：${reason}`
+    );
+  }
+
+  const blob = await response.blob();
+  const fileName = getDownloadFileName(response, fallbackName);
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 export async function retryDocument(_docId) {
   throw new Error("文档重试接口暂未开放");
 }

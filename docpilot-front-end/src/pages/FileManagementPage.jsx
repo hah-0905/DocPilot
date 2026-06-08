@@ -4,8 +4,10 @@ import {
   getDocuments,
   uploadKnowledgeBaseFile,
   deleteDocument,
+  downloadDocument,
   retryDocument,
 } from "../api/knowledgeBase";
+import DocumentViewer from "../components/DocumentViewer";
 
 const FILE_TYPE_META = {
   pdf: { label: "PDF", bg: "#fef2f2", fg: "#dc2626" },
@@ -123,6 +125,7 @@ export default function FileManagementPage({ onNavigate }) {
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [page, setPage] = useState(1);
+  const [viewerFile, setViewerFile] = useState(null);
   const pageSize = 10;
 
   const fetchFiles = useCallback(async () => {
@@ -234,6 +237,14 @@ export default function FileManagementPage({ onNavigate }) {
     }
   };
 
+  const handleDownload = async (file) => {
+    try {
+      await downloadDocument(file.kbId, file.id, file.name);
+    } catch (err) {
+      alert(err.message || "下载失败");
+    }
+  };
+
   const typeOptions = ["all", "PDF", "DOCX", "DOC", "MD", "TXT", "FILE"];
 
   return (
@@ -297,7 +308,7 @@ export default function FileManagementPage({ onNavigate }) {
               </div>
             </div>
 
-            <div className="kb-detail-stats" style={{ marginBottom: 18 }}>
+            <div className="kb-detail-stats fm-stats">
               <div className="kb-detail-stat-card"><div><div className="kb-detail-stat-label">全部文件</div><div className="kb-detail-stat-value">{stats.total}</div></div></div>
               <div className="kb-detail-stat-card"><div><div className="kb-detail-stat-label">已完成</div><div className="kb-detail-stat-value">{stats.completed}</div></div></div>
               <div className="kb-detail-stat-card"><div><div className="kb-detail-stat-label">处理中</div><div className="kb-detail-stat-value">{stats.processing}</div></div></div>
@@ -372,6 +383,8 @@ export default function FileManagementPage({ onNavigate }) {
                             <td className="fm-cell-muted">{formatTime(file.uploadedAt)}</td>
                             <td>
                               <div className="fm-table-actions">
+                                <button className="fm-tbl-btn" onClick={() => handleDownload(file)}>下载</button>
+                                <button className="fm-tbl-btn" onClick={() => setViewerFile(file)}>查看</button>
                                 {file.status === "failed" && <button className="fm-tbl-btn" onClick={() => handleRetry(file)}>重试</button>}
                                 <button className="fm-tbl-btn fm-tbl-btn--danger" onClick={() => handleDelete(file)}>删除</button>
                               </div>
@@ -447,6 +460,12 @@ export default function FileManagementPage({ onNavigate }) {
           </div>
         </div>
       </div>
+      <DocumentViewer
+        kbId={viewerFile?.kbId}
+        document={viewerFile}
+        open={Boolean(viewerFile)}
+        onClose={() => setViewerFile(null)}
+      />
     </div>
   );
 }

@@ -7,8 +7,10 @@ import {
   uploadKnowledgeBaseFile,
   getDocuments,
   deleteDocument,
+  downloadDocument,
   retryDocument,
 } from "../api/knowledgeBase";
+import DocumentViewer from "../components/DocumentViewer";
 
 /* ===============================================================
    Adapter: backend KB detail DTO → frontend type
@@ -141,6 +143,7 @@ export default function KnowledgeBaseDetailPage({ onNavigate }) {
   const [deleting, setDeleting] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [viewerDoc, setViewerDoc] = useState(null);
 
   // ---- Fetch KB detail ----
   const fetchDetail = useCallback(async () => {
@@ -265,9 +268,12 @@ export default function KnowledgeBaseDetailPage({ onNavigate }) {
     input.click();
   };
 
-  // ---- View document (placeholder) ----
-  const handleViewDoc = (doc) => {
-    alert(`文件预览功能待接入 — ${doc.id}`);
+  const handleDownloadDoc = async (doc) => {
+    try {
+      await downloadDocument(kbId, doc.id, doc.name);
+    } catch (err) {
+      alert(err.message || "下载失败");
+    }
   };
 
   // ---- Delete document ----
@@ -591,7 +597,8 @@ export default function KnowledgeBaseDetailPage({ onNavigate }) {
                             <td className="kb-cell-muted">{doc.chunkCount ?? "--"}</td>
                             <td>
                               <div className="kb-table-actions">
-                                <button className="kb-table-action-btn" onClick={() => handleViewDoc(doc)}>查看</button>
+                                <button className="kb-table-action-btn" onClick={() => handleDownloadDoc(doc)}>下载</button>
+                                <button className="kb-table-action-btn" onClick={() => setViewerDoc(doc)}>查看</button>
                                 {status === "failed" && (
                                   <button className="kb-table-action-btn" onClick={() => handleRetryDoc(doc)}>重试</button>
                                 )}
@@ -649,6 +656,13 @@ export default function KnowledgeBaseDetailPage({ onNavigate }) {
           </div>
         </div>
       </div>
+
+      <DocumentViewer
+        kbId={kbId}
+        document={viewerDoc}
+        open={Boolean(viewerDoc)}
+        onClose={() => setViewerDoc(null)}
+      />
 
       {/* ===== Edit Modal ===== */}
       {showEditModal && (

@@ -1,12 +1,12 @@
 from datetime import datetime, timezone
 import hashlib
+from typing import List
 import uuid
 from pathlib import Path
 
 from fastapi import UploadFile
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import String, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.core.exceptions import AppException
 from app.models.chunk_embeddings import ChunkEmbedding
 from app.models.documents import Document, DocumentChunk, DocumentVersion
@@ -97,6 +97,21 @@ class DocumentService:
         )
         return count.scalar_one()
 
+    async def list_document_chunks(
+            self,
+            db: AsyncSession,
+            document_id: int,
+            kb_id: int,
+    ) -> list[DocumentChunk]:
+        result = await db.execute(
+            select(DocumentChunk).where(
+                DocumentChunk.document_id == document_id,
+                DocumentChunk.kb_id == kb_id,
+                DocumentChunk.enabled == True,
+            ).order_by(DocumentChunk.chunk_no.asc())
+        )
+        return result.scalars().all()
+
     async def delete_document(
             self,
             db: AsyncSession,
@@ -176,6 +191,45 @@ class DocumentService:
             )
         return kb
 
+    async def get_document_version(
+        self,
+        db: AsyncSession,
+        kb_id: int,
+        document_id: int,
+    ) -> List[DocumentVersion]:
+        result = await db.execute(
+            select(DocumentVersion).join(
+                Document, DocumentVersion.document_id == Document.id
+            ).where(
+                Document.id == document_id,
+                Document.kb_id == kb_id,
+                Document.deleted_at.is_(None),
+                Document.enabled == True
+            )
+            .order_by(DocumentVersion.version_no.desc())
+        )
+        version = result.scalar_one_or_none()
+        return version
+    
+    async def get_document(
+            self,
+            db: AsyncSession,
+            user_id: int,
+            kb_id: int,
+            document_id: int,
+    ) -> Document | None:
+        await self._get_owned_knowledge_base(db, user_id, kb_id)
+
+        document = await db.execute(
+            select(Document).where(
+                Document.id == document_id,
+                Document.kb_id == kb_id,
+                Document.deleted_at.is_(None),
+                Document.enabled == True
+            )
+        )
+        return document.scalar_one_or_none()
+
     async def _upload_one_file(
         self,
         db: AsyncSession,
@@ -213,6 +267,16 @@ class DocumentService:
         file_ext = Path(filename).suffix.lower().lstrip(".")
         file_sha256 = hashlib.sha256(file_bytes).hexdigest()
 
+        upload_dir = Path(__file__).resolve(
+        ).parents[2] / "uploads" / str(kb_id)
+        upload_dir.mkdir(parents=True, exist_ok=True)
+
+        safe_name = Path(filename).name
+        stored_name = f"{file_sha256}_{safe_name}"
+        storage_path = upload_dir / stored_name
+
+        storage_path.write_bytes(file_bytes)
+
         document = Document(
             kb_id=kb_id,
             title=filename,
@@ -231,6 +295,7 @@ class DocumentService:
         version = DocumentVersion(
             document_id=document.id,
             version_no=1,
+            storage_uri=str(storage_path),
             original_file_name=filename,
             sha256=file_sha256,
             parser_name="builtin",

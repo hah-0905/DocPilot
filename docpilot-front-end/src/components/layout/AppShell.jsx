@@ -22,29 +22,22 @@ function ShellIcon({ name, size = 20 }) {
   );
 }
 
-function normalizeKnowledgeBases(data) {
-  const list = Array.isArray(data)
-    ? data
-    : Array.isArray(data?.items)
-      ? data.items
-      : Array.isArray(data?.list)
-        ? data.list
-        : Array.isArray(data?.records)
-          ? data.records
-          : [];
+function toList(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.items)) return data.items;
+  if (Array.isArray(data?.list)) return data.list;
+  if (Array.isArray(data?.records)) return data.records;
+  return [];
+}
 
-  return list
+function normalizeKnowledgeBases(data) {
+  return toList(data)
     .filter((kb) => kb?.id !== undefined && kb?.id !== null)
     .map((kb) => ({ id: String(kb.id), name: kb.name || "未命名知识库" }));
 }
 
 function normalizeChatSessions(data) {
-  const list = Array.isArray(data?.sessions)
-    ? data.sessions
-    : Array.isArray(data)
-      ? data
-      : [];
-
+  const list = Array.isArray(data?.sessions) ? data.sessions : Array.isArray(data) ? data : [];
   return list
     .filter((session) => session?.session_id !== undefined && session?.session_id !== null)
     .map((session) => ({
@@ -76,7 +69,6 @@ export function Sidebar({ activePath, onNavigate }) {
       window.dispatchEvent(new CustomEvent("docpilot:open-chat-session", { detail: session }));
       return;
     }
-
     sessionStorage.setItem("docpilot_pending_chat_session", JSON.stringify(session));
     onNavigate("/chat");
   };
@@ -174,8 +166,8 @@ export function Sidebar({ activePath, onNavigate }) {
             <button
               type="button"
               className={`app-nav-toggle${kbOpen ? " app-nav-toggle--open" : ""}`}
-              title={kbOpen ? "收起知识库列表" : "展开知识库列表"}
-              aria-label={kbOpen ? "收起知识库列表" : "展开知识库列表"}
+              title={kbOpen ? "收起知识库文件列表" : "展开知识库文件列表"}
+              aria-label={kbOpen ? "收起知识库文件列表" : "展开知识库文件列表"}
               aria-expanded={kbOpen}
               onClick={() => setKbOpen((current) => !current)}
             >
@@ -290,7 +282,6 @@ export function TopBar({ title, breadcrumb, actions, meta, onNavigate, onLogout 
 
   useEffect(() => {
     if (!userMenuOpen) return undefined;
-
     const handleClickAway = (event) => {
       if (!event.target.closest(".app-user-menu")) setUserMenuOpen(false);
     };
