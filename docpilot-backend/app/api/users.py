@@ -67,3 +67,18 @@ async def login(
             user_info=UserInfoResponse.model_validate(user)  # 将用户信息转换为响应数据
         )
     )
+
+
+@router.post("/update/{user_id}")
+async def update_user_info(
+    user_id: int,
+    request: UserInfoBase,
+    db: AsyncSession = Depends(get_db)
+):
+    
+    user = await users.update_user_info(
+        user_id,
+        request, 
+        db
+        )
+    return user

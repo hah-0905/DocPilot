@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   getKnowledgeBases,
+  getDocuments,
   createKnowledgeBase,
   deleteKnowledgeBase,
   rebuildKnowledgeBaseIndex,
@@ -32,6 +33,29 @@ function getDefaultMeta(name) {
 /* ===============================================================
    Adapter: backend DTO → frontend KnowledgeBase type
    =============================================================== */
+function toNumber(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function getDocumentChunkCount(doc) {
+  return toNumber(doc.chunk_count ?? doc.chunks ?? doc.vector_count ?? doc.embedding_count, 0);
+}
+
+async function hydrateKnowledgeBaseStats(kb) {
+  try {
+    const documents = await getDocuments(kb.id);
+    const list = Array.isArray(documents) ? documents : [];
+    return {
+      ...kb,
+      fileCount: list.length,
+      vectorCount: list.reduce((sum, doc) => sum + getDocumentChunkCount(doc), 0),
+    };
+  } catch (_err) {
+    return kb;
+  }
+}
+
 function mapKnowledgeBaseDTO(dto) {
   const name = dto.name || "未命名知识库";
   const meta = MOCK_KB_META[name] || getDefaultMeta(name);
@@ -123,7 +147,8 @@ export default function KnowledgeBasePage({ onNavigate }) {
     try {
       const data = await getKnowledgeBases();
       const mapped = Array.isArray(data) ? data.map(mapKnowledgeBaseDTO) : [];
-      setKbs(mapped);
+      const withRealStats = await Promise.all(mapped.map(hydrateKnowledgeBaseStats));
+      setKbs(withRealStats);
     } catch (err) {
       if (err.code === 401 || err.code === 403) {
         // Will be handled by App's auth check

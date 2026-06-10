@@ -103,6 +103,12 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
+    """
+    获取当前用户
+    :param credentials: 认证凭证
+    :param db: 数据库连接
+    :return: 用户信息
+    """
     token_hash = hashlib.sha256(
         credentials.credentials.encode("utf-8")
     ).hexdigest()
@@ -179,3 +185,37 @@ async def create_workspace(user_data, db: AsyncSession):
     db.add(workspace_member)
 
     await db.commit()
+
+
+async def update_user_info(
+        user_id: int,
+        user_data: UserInfoBase,
+        db: AsyncSession
+):
+
+    result = await db.execute(
+        select(User).where(
+            User.id == user_id
+        )
+    )
+    user = result.scalar_one_or_none()
+
+    if not user:  # 找不到用户
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在"
+        )
+    
+    # 更新用户信息
+    if user_data.email is not None:
+        user.email = user_data.email
+    if user_data.username is not None:
+        user.username = user_data.username
+    if user_data.display_name is not None:
+        user.display_name = user_data.display_name
+    if user_data.password is not None:
+        user.password_hash = security.get_hash_password(user_data.password)
+
+    await db.commit()
+    await db.refresh(user)
+    return user
