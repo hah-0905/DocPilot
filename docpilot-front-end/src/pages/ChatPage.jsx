@@ -2,11 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createChatCompletion, deleteChatSession, getChatMessages, listChatSessions, streamChatCompletion } from "../api/chat";
 import { getKnowledgeBases } from "../api/knowledgeBase";
 
-function createSessionId() {
-  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
-  return `chat-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
 function SvgIcon({ name, size = 20 }) {
   const paths = {
     plus: <><circle cx="12" cy="12" r="10" /><path d="M8 12h8M12 8v8" /></>,
@@ -79,7 +74,7 @@ function getLatestAssistantChunks(messages) {
 }
 
 export default function ChatPage({ onNavigate }) {
-  const [sessionId, setSessionId] = useState(() => createSessionId());
+  const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState([
     {
       id: "welcome",
@@ -136,7 +131,7 @@ export default function ChatPage({ onNavigate }) {
         const list = normalizeKnowledgeBases(data);
         if (!ignore) {
           setKnowledgeBases(list);
-          setSelectedKbId((current) => current || (list[0]?.id ? String(list[0].id) : ""));
+          setSelectedKbId((current) => current);
         }
       } catch (err) {
         if (!ignore) setError(err.message || "加载知识库失败");
@@ -156,7 +151,7 @@ export default function ChatPage({ onNavigate }) {
   }, [messages, sending]);
 
   const startNewChat = () => {
-    setSessionId(createSessionId());
+    setSessionId(null);
     setInput("");
     setError("");
     setUsedChunks([]);
@@ -283,6 +278,13 @@ export default function ChatPage({ onNavigate }) {
           sessionId,
           message: text,
           kbId: selectedKbId,
+          onMeta: (meta) => {
+            if (meta?.session_id) {
+              setSessionId(meta.session_id);
+            }
+            const normalizedChunks = normalizeUsedChunks(meta?.used_chunks || meta?.chunks || []);
+            if (normalizedChunks.length > 0) setUsedChunks(normalizedChunks);
+          },
           onChunk: (chunk, chunks) => {
             const normalizedChunks = normalizeUsedChunks(chunks);
             if (normalizedChunks.length > 0) setUsedChunks(normalizedChunks);

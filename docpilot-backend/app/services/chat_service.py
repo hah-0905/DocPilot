@@ -79,6 +79,25 @@ class ChatService:
             },
         ]
 
+    @staticmethod
+    def _build_user_prompt(message: str, used_chunks: list[dict[str, Any]]) -> str:
+        if not used_chunks:
+            return message
+
+        context_text = "\n\n".join(
+            [
+                f"[来源 {idx + 1}]\n{chunk['content']}"
+                for idx, chunk in enumerate(used_chunks)
+            ]
+        )
+        return f"""请基于以下知识库内容回答用户问题。
+
+知识库内容：
+{context_text}
+
+用户问题：
+{message}""".strip()
+
     async def _get_history(
         self,
         db: AsyncSession,
@@ -183,18 +202,11 @@ class ChatService:
             for chunk in retrieved_chunks
         ]
 
-        # 3. 构造 RAG 上下文
-        context_text = "\n\n".join(
-            [
-                f"[来源 {idx + 1}]\n{chunk['content']}"
-                for idx, chunk in enumerate(used_chunks)
-            ]
-        )
-
-        rag_message = f"""请基于以下知识库内容回答用户问题。知识库内容：{context_text}用户问题：{message}""".strip()
+        # 3. 构造用户 prompt。只有命中 chunks 时才注入 RAG 上下文。
+        user_prompt = self._build_user_prompt(message, used_chunks)
 
         # 4. 构造 LLM 消息
-        messages = self._build_messages(history, rag_message)
+        messages = self._build_messages(history, user_prompt)
         start_time = time.perf_counter()
 
         # 5. 调用大模型
@@ -257,18 +269,16 @@ class ChatService:
             for chunk in retrieved_chunks
         ]
 
-        context_text = "\n\n".join(
-            [
-                f"[来源 {idx + 1}]\n{chunk['content']}"
-                for idx, chunk in enumerate(used_chunks)
-            ]
-        )
-        rag_message = f"""请基于以下知识库内容回答用户问题。知识库内容：{context_text}用户问题：{message}""".strip()
-        messages = self._build_messages(history, rag_message)
+        user_prompt = self._build_user_prompt(message, used_chunks)
+        messages = self._build_messages(history, user_prompt)
         answer_chunks: list[str] = []
         start_time = time.perf_counter()
 
-        yield {"text": "", "used_chunks": used_chunks}
+        yield {
+            "type": "meta",
+            "session_id": chat_session.id,
+            "used_chunks": used_chunks,
+        }
 
         async for chunk in self.llm_service.stream_chat(messages):
             answer_chunks.append(chunk)

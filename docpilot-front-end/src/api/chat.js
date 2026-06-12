@@ -40,7 +40,7 @@ export async function createChatCompletion({ sessionId, message, stream = false,
   return request("/api/chat/completions", {
     method: "POST",
     body: JSON.stringify({
-      session_id: sessionId,
+      session_id: sessionId ?? null,
       message,
       stream,
       kb_id: kbId ? Number(kbId) : undefined,
@@ -48,12 +48,12 @@ export async function createChatCompletion({ sessionId, message, stream = false,
   });
 }
 
-export async function streamChatCompletion({ sessionId, message, kbId, onChunk }) {
+export async function streamChatCompletion({ sessionId, message, kbId, onChunk, onMeta }) {
   const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
     method: "POST",
     headers: getAuthHeaders(),
     body: JSON.stringify({
-      session_id: sessionId,
+      session_id: sessionId ?? null,
       message,
       stream: true,
       kb_id: kbId ? Number(kbId) : undefined,
@@ -98,6 +98,10 @@ export async function streamChatCompletion({ sessionId, message, kbId, onChunk }
       try {
         const payload = JSON.parse(data);
         if (payload && typeof payload === "object") {
+          if (payload.type === "meta") {
+            onMeta?.(payload);
+            continue;
+          }
           onChunk?.(payload.text || "", payload.used_chunks || payload.chunks || []);
         } else {
           onChunk?.(String(payload), []);
