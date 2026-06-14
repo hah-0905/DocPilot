@@ -1,8 +1,10 @@
+from datetime import datetime
 from typing import Any
 
-from app.schemas.report import ReportTaskCreate
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.report import ReportSection, ReportTask
+from app.schemas.report import ReportTaskCreate
 
 
 class ReportService:
@@ -10,11 +12,10 @@ class ReportService:
     async def create_report_task(
         self,
         db: AsyncSession,
-        request: ReportTaskCreate
-    ):
-        '''
-        创建报告任务
-        '''
+        request: ReportTaskCreate,
+    ) -> ReportTask:
+        """创建报告任务。"""
+
         task = ReportTask(
             title=request.title,
             user_id=request.user_id,
@@ -22,38 +23,48 @@ class ReportService:
             report_type=request.report_type,
             instruction=request.instruction,
             model_name=request.model_name,
+            status="running",
+            started_at=datetime.utcnow(),
+            config={
+                "kb_id": request.kb_id,
+                "length": request.length,
+                "citation_format": request.citation_format,
+                "progress": 0,
+            },
         )
+
         db.add(task)
         await db.flush()
+
         return task
 
     async def create_report_section(
-            self,
-            task_id: int,
-            section: dict[str, Any],
-            section_content: str,
-            db: AsyncSession
-    ):
-        '''
-        创建报告章节
-        '''
-        section = ReportSection(
+        self,
+        db: AsyncSession,
+        task_id: int,
+        section: dict[str, Any],
+        section_content: str,
+    ) -> ReportSection:
+        """创建报告章节，但不在这里提交事务。"""
+
+        report_section = ReportSection(
             task_id=task_id,
             order_no=section["order_no"],
             title=section["title"],
-            requirement=section["requirement"],
+            requirement=section.get("requirement"),
             content=section_content,
             status="success",
         )
-        db.add(section)
+
+        db.add(report_section)
         await db.flush()
-        await db.commit()
-        return section
+
+        return report_section
 
     async def build_default_sections(
-            self,
-            report_type: str,
-            length: str
+        self,
+        report_type: str,
+        length: str,
     ) -> list[dict[str, Any]]:
         if report_type == "technical_review":
             if length == "short":
