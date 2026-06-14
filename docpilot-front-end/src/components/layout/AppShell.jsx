@@ -7,6 +7,7 @@ function ShellIcon({ name, size = 20 }) {
     plus: <><circle cx="12" cy="12" r="10" /><path d="M8 12h8M12 8v8" /></>,
     layers: <><path d="m12 3 9 5-9 5-9-5 9-5Z" /><path d="m4 12 8 4.5 8-4.5" /><path d="m4 16 8 4.5 8-4.5" /></>,
     file: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z" /><path d="M14 2v6h6" /></>,
+    report: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6" /><path d="M8 13h8M8 17h5" /></>,
     settings: <><circle cx="12" cy="12" r="3" /><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" /></>,
     chat: <><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10Z" /><circle cx="12" cy="10" r="1" /></>,
     search: <><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></>,
@@ -198,6 +199,18 @@ export function Sidebar({ activePath, onNavigate }) {
           )}
         </div>
 
+        <a
+          className={`app-nav-item${activePath === "/report" ? " app-nav-item--active" : ""}`}
+          href="/report"
+          onClick={(event) => {
+            event.preventDefault();
+            onNavigate("/report");
+          }}
+        >
+          <ShellIcon name="report" size={18} />
+          <span>报告生成</span>
+        </a>
+
         <div className="app-nav-divider" aria-hidden="true" />
 
         <a
@@ -247,6 +260,7 @@ export function Sidebar({ activePath, onNavigate }) {
             </div>
           ))}
         </div>
+
       </nav>
 
       <div className="app-sidebar__footer">

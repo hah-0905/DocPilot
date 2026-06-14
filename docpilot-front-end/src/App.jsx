@@ -6,11 +6,12 @@ import KnowledgeBaseDetailPage from "./pages/KnowledgeBaseDetailPage";
 import FileManagementPage from "./pages/FileManagementPage";
 import SettingsPage from "./pages/SettingsPage";
 import ChatPage from "./pages/ChatPage";
+import ReportPage from "./pages/ReportPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import AppShell from "./components/layout/AppShell";
 
-const KNOWN_PATHS = new Set(["/", "/login", "/register", "/dashboard", "/knowledge-base", "/files", "/settings", "/chat"]);
+const KNOWN_PATHS = new Set(["/", "/login", "/register", "/dashboard", "/knowledge-base", "/files", "/settings", "/chat", "/report"]);
 
 /** Check if path is a KB detail route: /knowledge-base/<id> */
 function isKBDetailPath(path) {
@@ -49,7 +50,7 @@ export default function App() {
 
   useEffect(() => {
     const isAuthPage = path === "/login" || path === "/register";
-    const isProtectedPage = path === "/knowledge-base" || isKBDetailPath(path) || path === "/dashboard" || path === "/files" || path === "/settings" || path === "/chat";
+    const isProtectedPage = path === "/knowledge-base" || isKBDetailPath(path) || path === "/dashboard" || path === "/files" || path === "/settings" || path === "/chat" || path === "/report";
 
     if (path === "/") {
       navigate(auth?.token ? "/knowledge-base" : "/login", { replace: true });
@@ -84,6 +85,9 @@ export default function App() {
   const shellMeta = useMemo(() => {
     if (path === "/chat") {
       return { title: "智能问答", breadcrumb: "首页 / 智能问答", meta: "接口：/api/chat/completions" };
+    }
+    if (path === "/report") {
+      return { title: "报告生成", breadcrumb: "首页 / 报告生成", meta: "接口：/api/report/tasks" };
     }
     if (path === "/files") {
       return { title: "我上传的文件", breadcrumb: "首页 / 文件管理", meta: "模型：DeepSeek / GPT" };
@@ -125,6 +129,10 @@ export default function App() {
       return <ChatPage onNavigate={navigate} />;
     }
 
+    if (path === "/report" && auth?.token) {
+      return <ReportPage />;
+    }
+
     if (path === "/dashboard" && auth?.token) {
       return <DashboardPage auth={auth} onLogout={handleLogout} />;
     }
@@ -138,7 +146,8 @@ export default function App() {
     path === "/dashboard" ||
     path === "/files" ||
     path === "/settings" ||
-    path === "/chat"
+    path === "/chat" ||
+    path === "/report"
   );
 
   if (!isProtectedPage) return currentPage;
