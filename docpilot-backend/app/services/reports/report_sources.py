@@ -25,7 +25,7 @@ class ReportSourceService:
                 chunk_id=chunk["chunk_id"],
                 score=Decimal(str(score)) if score else None,
                 citation_no=citation_no,
-                quote_text=chunk.get("quote_text"),
+                quote_text=chunk.get("content"),
             )
 
             db.add(source)
