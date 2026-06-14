@@ -19,6 +19,9 @@ class RagService:
         query: str,
         top_k: int = 5,
     ) -> list[dict]:
+        '''
+        Search for similar chunks in the vector store.
+        '''
         query_embedding = await self.llm_service.embed_text(query)
         hits = await self.vector_service.search_similar_chunks(
             embedding=query_embedding,
@@ -77,6 +80,9 @@ class RagService:
         question: str,
         top_k: int = 5,
     ) -> dict:
+        '''
+        RAG 聊天
+        '''
         retrieved_chunks = await self.search(
             db,
             kb_id=kb_id,

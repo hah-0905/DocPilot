@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field
 
 class ReportTaskCreate(BaseModel):
     workspace_id: int
-    user_id: int
 
     kb_id: int
     title: str = Field(..., min_length=1, max_length=255)

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { getStoredAuth } from "../api/auth";
 import { getKnowledgeBases } from "../api/knowledgeBase";
 import { createReportTask } from "../api/report";
 
@@ -63,17 +62,115 @@ function normalizeKnowledgeBases(data) {
 }
 
 function formatMarkdown(markdown) {
-  return (markdown || "")
-    .split(/\n/)
-    .map((line, index) => {
-      if (line.startsWith("# ")) return <h1 key={index}>{line.slice(2)}</h1>;
-      if (line.startsWith("## ")) return <h2 key={index}>{line.slice(3)}</h2>;
-      if (line.startsWith("### ")) return <h3 key={index}>{line.slice(4)}</h3>;
-      if (line.trim() === "---") return <hr key={index} />;
-      if (/^\d+\.\s/.test(line.trim())) return <li key={index}>{line.trim().replace(/^\d+\.\s/, "")}</li>;
-      if (!line.trim()) return <br key={index} />;
-      return <p key={index}>{line}</p>;
-    });
+  if (!markdown) return null;
+  const items = [];
+  let inOrderedList = false;
+  const lines = markdown.split(/\n/);
+  let key = 0;
+
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    key++;
+
+    // Inline formatting helper
+    const renderInline = (text) => {
+      const parts = [];
+      let remaining = text;
+      let partKey = 0;
+      // Bold **text**
+      const boldRe = /\*\*(.+?)\*\*/;
+      // Code `code`
+      const codeRe = /`(.+?)`/g;
+
+      while (remaining) {
+        let match;
+        let consumed = false;
+
+        // Check for bold
+        const bm = remaining.match(boldRe);
+        // Check for code
+        const cm = remaining.match(codeRe);
+
+        if (bm && (!cm || bm.index < cm.index)) {
+          if (bm.index > 0) parts.push(remaining.slice(0, bm.index));
+          parts.push(<strong key={partKey++}>{bm[1]}</strong>);
+          remaining = remaining.slice(bm.index + bm[0].length);
+          consumed = true;
+        } else if (cm) {
+          if (cm.index > 0) parts.push(remaining.slice(0, cm.index));
+          parts.push(<code key={partKey++}>{cm[1]}</code>);
+          remaining = remaining.slice(cm.index + cm[0].length);
+          consumed = true;
+        }
+
+        if (!consumed) {
+          // Check for link [text](url)
+          const linkRe = /\[(.+?)\]\((.+?)\)/;
+          const lm = remaining.match(linkRe);
+          if (lm) {
+            if (lm.index > 0) parts.push(remaining.slice(0, lm.index));
+            parts.push(<a key={partKey++} href={lm[2]} target="_blank" rel="noreferrer">{lm[1]}</a>);
+            remaining = remaining.slice(lm.index + lm[0].length);
+          } else {
+            parts.push(remaining);
+            remaining = "";
+          }
+        }
+      }
+      return parts.length === 1 ? parts[0] : parts;
+    };
+
+    if (line.startsWith("# ")) {
+      inOrderedList = false;
+      items.push(<h1 key={key}>{line.slice(2)}</h1>);
+    } else if (line.startsWith("## ")) {
+      inOrderedList = false;
+      items.push(<h2 key={key}>{line.slice(3)}</h2>);
+    } else if (line.startsWith("### ")) {
+      inOrderedList = false;
+      items.push(<h3 key={key}>{line.slice(4)}</h3>);
+    } else if (line.trim() === "---") {
+      inOrderedList = false;
+      items.push(<hr key={key} />);
+    } else if (/^\d+\.\s/.test(line.trim())) {
+      inOrderedList = true;
+      items.push(<li key={key}>{renderInline(line.trim().replace(/^\d+\.\s/, ""))}</li>);
+    } else if (/^[-*]\s/.test(line.trim())) {
+      inOrderedList = false;
+      items.push(<li key={key}>{renderInline(line.trim().slice(2).trim())}</li>);
+    } else if (!line.trim()) {
+      // Close ordered list on empty line (already handled below)
+      inOrderedList = false;
+      items.push(<br key={key} />);
+    } else {
+      inOrderedList = false;
+      items.push(<p key={key}>{renderInline(line)}</p>);
+    }
+  }
+
+  // Wrap consecutive <li> items in <ol> for ordered lists, <ul> for unordered
+  const wrapped = [];
+  let currentList = null;
+  let currentItems = [];
+  let currentKey = 0;
+
+  for (const item of items) {
+    if (item.type === "li") {
+      currentItems.push(item);
+    } else {
+      if (currentItems.length > 0) {
+        // Determine list type — numeric prefix is already stripped, so use <ul>
+        wrapped.push(<ul key={currentKey++} style={{ paddingLeft: 24, margin: "4px 0" }}>{currentItems}</ul>);
+        currentItems = [];
+      }
+      wrapped.push(item);
+    }
+  }
+  if (currentItems.length > 0) {
+    wrapped.push(<ul key={currentKey++} style={{ paddingLeft: 24, margin: "4px 0" }}>{currentItems}</ul>);
+  }
+
+  return wrapped;
 }
 
 export default function ReportPage() {
@@ -132,8 +229,6 @@ export default function ReportPage() {
       return;
     }
 
-    const auth = getStoredAuth();
-    const userId = auth?.user?.id || auth?.user?.user_id || 1;
     const workspaceId = selectedKb?.workspace_id || selectedKb?.workspaceId || 1;
 
     setLoading(true);
@@ -142,7 +237,6 @@ export default function ReportPage() {
     try {
       const result = await createReportTask({
         workspace_id: Number(workspaceId),
-        user_id: Number(userId),
         kb_id: Number(kbId),
         title: title.trim(),
         report_type: reportType,
