@@ -190,3 +190,21 @@ class ReportService:
 
         return result.scalars().all()
     
+
+    async def get_report_task_detail(
+            self,
+            db: AsyncSession,
+            task_id: int,
+            user_id: int,
+    ) -> ReportTask:
+        """获取报告任务详情。"""
+        result = await db.execute(
+            select(ReportTask)
+            .where(ReportTask.id == task_id,
+                   ReportTask.user_id == user_id,
+                   ReportTask.status == "success")
+        )
+
+        return result.scalars().first()
+    
+    

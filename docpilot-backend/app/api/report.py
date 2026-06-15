@@ -149,3 +149,29 @@ async def get_report_tasks(
         message="获取成功",
         data=[ReportTaskResponse.model_validate(task) for task in task_list]
         )
+
+@router.get("/tasks/{task_id}")
+async def get_report_task_detail(
+    task_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    '''
+    获取报告任务详情
+    '''
+    # 获取报告任务
+    task = await report_service.get_report_task_detail(
+        db=db,
+        task_id=task_id,
+        user_id=current_user.id,
+    )
+    # 检查报告任务是否存在
+    if task is None:
+        raise HTTPException(
+            status_code=404,
+            detail="报告任务不存在",
+        )
+    return  ApiResponse(
+        message="获取成功",
+        data=ReportTaskResponse.model_validate(task)
+        )

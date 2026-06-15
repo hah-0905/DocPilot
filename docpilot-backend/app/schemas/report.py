@@ -1,5 +1,5 @@
 from typing import Literal, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 
@@ -16,7 +16,12 @@ class ReportTaskCreate(BaseModel):
 
 
 class ReportTaskResponse(BaseModel):
-    task_id: int
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True,
+    )
+
+    task_id: int=Field(validation_alias="id")
     title: str
     status: str
     result_content: str | None = None
