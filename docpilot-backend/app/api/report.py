@@ -175,3 +175,31 @@ async def get_report_task_detail(
         message="获取成功",
         data=ReportTaskResponse.model_validate(task)
         )
+
+@router.delete("/tasks/{task_id}")
+async def delete_report_task(
+    task_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    '''
+    删除报告任务
+    '''
+    deleted = await report_service.delete_report_task(
+        db=db,
+        task_id=task_id,
+        user_id=current_user.id,
+    )
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail="报告任务不存在",
+        )
+    
+    return  ApiResponse(
+        message="删除成功",
+        deleted={
+            "task_id": task_id,
+            "deleted": True,
+        }
+        )

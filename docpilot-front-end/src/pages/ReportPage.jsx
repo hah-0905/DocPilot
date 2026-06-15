@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { getKnowledgeBases } from "../api/knowledgeBase";
-import { createReportTask } from "../api/report";
+import { createReportTask, deleteReportTask, getReportTask, getReportTasks } from "../api/report";
 
 const REPORT_TYPES = [
   { value: "technical_review", label: "技术综述" },
@@ -45,6 +45,8 @@ function ReportIcon({ name, size = 20 }) {
     save: <><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" /><path d="M17 21v-8H7v8" /><path d="M7 3v5h8" /></>,
     refresh: <><path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v6h-6" /></>,
     chevron: <path d="m6 9 6 6 6-6" />,
+    list: <><path d="M8 6h13" /><path d="M8 12h13" /><path d="M8 18h13" /><path d="M3 6h.01" /><path d="M3 12h.01" /><path d="M3 18h.01" /></>,
+    trash: <><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v5" /><path d="M14 11v5" /></>,
   };
 
   return (
@@ -59,6 +61,39 @@ function normalizeKnowledgeBases(data) {
   if (Array.isArray(data?.knowledge_bases)) return data.knowledge_bases;
   if (Array.isArray(data?.items)) return data.items;
   return [];
+}
+
+function normalizeReportTasks(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.tasks)) return data.tasks;
+  if (Array.isArray(data?.items)) return data.items;
+  return [];
+}
+
+function getTaskId(item) {
+  return item?.task_id ?? item?.id;
+}
+
+function getStatusLabel(status) {
+  const labels = {
+    pending: "等待中",
+    running: "生成中",
+    success: "已完成",
+    failed: "失败",
+  };
+  return labels[status] || status || "未知";
+}
+
+function formatDateTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function formatMarkdown(markdown) {
@@ -185,6 +220,10 @@ export default function ReportPage() {
   const [modelName, setModelName] = useState("DeepSeek / GPT");
   const [markdown, setMarkdown] = useState(DEFAULT_MARKDOWN);
   const [task, setTask] = useState(null);
+  const [tasks, setTasks] = useState([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [deletingTaskId, setDeletingTaskId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -193,6 +232,18 @@ export default function ReportPage() {
     () => knowledgeBases.find((kb) => String(kb.id) === String(kbId)),
     [knowledgeBases, kbId]
   );
+
+  const loadReportTasks = async ({ silent = false } = {}) => {
+    if (!silent) setTasksLoading(true);
+    try {
+      const data = await getReportTasks();
+      setTasks(normalizeReportTasks(data));
+    } catch (err) {
+      if (!silent) setError(err.message || "报告列表加载失败");
+    } finally {
+      if (!silent) setTasksLoading(false);
+    }
+  };
 
   useEffect(() => {
     let ignore = false;
@@ -214,6 +265,7 @@ export default function ReportPage() {
     };
 
     loadKnowledgeBases();
+    loadReportTasks();
     return () => {
       ignore = true;
     };
@@ -248,6 +300,7 @@ export default function ReportPage() {
       setTask(result);
       setMarkdown(result?.result_content || "");
       setNotice("报告已生成");
+      await loadReportTasks({ silent: true });
     } catch (err) {
       setError(err.message || "报告生成失败");
     } finally {
@@ -286,6 +339,44 @@ export default function ReportPage() {
       ...history,
     ].slice(0, 20)));
     setNotice("已保存到本地记录");
+  };
+
+  const handleSelectTask = async (taskId) => {
+    if (!taskId) return;
+    setDetailLoading(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await getReportTask(taskId);
+      setTask(result);
+      setTitle(result?.title || title);
+      setMarkdown(result?.result_content || "");
+    } catch (err) {
+      setError(err.message || "报告详情加载失败");
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const handleDeleteTask = async (event, taskId) => {
+    event.stopPropagation();
+    if (!taskId) return;
+    setDeletingTaskId(String(taskId));
+    setError("");
+    setNotice("");
+    try {
+      await deleteReportTask(taskId);
+      setTasks((current) => current.filter((item) => String(getTaskId(item)) !== String(taskId)));
+      if (String(getTaskId(task)) === String(taskId)) {
+        setTask(null);
+        setMarkdown("");
+      }
+      setNotice("报告任务已删除");
+    } catch (err) {
+      setError(err.message || "报告删除失败");
+    } finally {
+      setDeletingTaskId("");
+    }
   };
 
   return (
@@ -367,6 +458,67 @@ export default function ReportPage() {
           <span>{loading ? "生成中..." : "生成报告"}</span>
         </button>
         <p className="report-estimate">预计耗时 20-40 秒</p>
+
+        <div className="report-task-panel">
+          <div className="report-task-panel__header">
+            <div>
+              <h3>历史任务</h3>
+              <p>{tasksLoading ? "正在加载..." : `${tasks.length} 个任务`}</p>
+            </div>
+            <button type="button" onClick={() => loadReportTasks()} disabled={tasksLoading}>
+              <ReportIcon name="refresh" size={15} />
+            </button>
+          </div>
+
+          <div className="report-task-list">
+            {tasks.length === 0 && (
+              <div className="report-task-empty">
+                <ReportIcon name="list" size={18} />
+                <span>{tasksLoading ? "加载中..." : "暂无报告任务"}</span>
+              </div>
+            )}
+
+            {tasks.map((item) => {
+              const taskId = getTaskId(item);
+              const isActive = String(getTaskId(task)) === String(taskId);
+              const isDeleting = deletingTaskId === String(taskId);
+
+              return (
+                <div
+                  key={taskId}
+                  className={`report-task-item${isActive ? " is-active" : ""}`}
+                  onClick={() => {
+                    if (!detailLoading && !isDeleting) handleSelectTask(taskId);
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  aria-disabled={detailLoading || isDeleting}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      if (!detailLoading && !isDeleting) handleSelectTask(taskId);
+                    }
+                  }}
+                >
+                  <span className={`report-task-status report-task-status--${item.status || "unknown"}`}>
+                    {getStatusLabel(item.status)}
+                  </span>
+                  <strong>{item.title || `报告任务 ${taskId}`}</strong>
+                  <em>{formatDateTime(item.finished_at || item.created_at || item.started_at) || `任务 #${taskId}`}</em>
+                  <button
+                    type="button"
+                    className="report-task-delete"
+                    onClick={(event) => handleDeleteTask(event, taskId)}
+                    aria-label="删除报告任务"
+                    disabled={isDeleting}
+                  >
+                    <ReportIcon name="trash" size={14} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </section>
 
       <section className="report-preview">
@@ -377,6 +529,7 @@ export default function ReportPage() {
               <span>最近生成</span>
               <strong>{task?.title || title}</strong>
               {task?.task_id && <em>任务 #{task.task_id}</em>}
+              {detailLoading && <em>加载中...</em>}
             </div>
           </div>
           <div className="report-actions">

@@ -20,22 +20,43 @@ function getErrorMessage(payload, fallback) {
   return payload.message || fallback;
 }
 
-export async function createReportTask(data) {
-  const response = await fetch(`${API_BASE_URL}/api/report/tasks`, {
-    method: "POST",
-    headers: getAuthHeaders(),
-    body: JSON.stringify(data),
+async function request(path, options = {}, fallback = "请求失败") {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      ...getAuthHeaders(),
+      ...(options.headers || {}),
+    },
   });
 
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(getErrorMessage(payload, `报告生成失败：HTTP ${response.status}`));
+    throw new Error(getErrorMessage(payload, `${fallback}：HTTP ${response.status}`));
   }
 
   if (payload?.code !== undefined && payload.code !== 200) {
-    throw new Error(getErrorMessage(payload, "报告生成失败"));
+    throw new Error(getErrorMessage(payload, fallback));
   }
 
   return payload?.data ?? payload;
+}
+
+export async function createReportTask(data) {
+  return request("/api/report/tasks", {
+    method: "POST",
+    body: JSON.stringify(data),
+  }, "报告生成失败");
+}
+
+export async function getReportTasks() {
+  return request("/api/report/tasks", { method: "GET" }, "报告列表加载失败");
+}
+
+export async function getReportTask(taskId) {
+  return request(`/api/report/tasks/${taskId}`, { method: "GET" }, "报告详情加载失败");
+}
+
+export async function deleteReportTask(taskId) {
+  return request(`/api/report/tasks/${taskId}`, { method: "DELETE" }, "报告删除失败");
 }

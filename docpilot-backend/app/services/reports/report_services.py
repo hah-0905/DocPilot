@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.report import ReportSection, ReportTask
@@ -207,4 +207,35 @@ class ReportService:
 
         return result.scalars().first()
     
+
+    async def delete_report_task(
+            self,
+            db: AsyncSession,
+            task_id: int,
+            user_id: int,
+    )-> None:
+        '''
+        删除报告任务
+        '''
+        task = await db.execute(
+            select(ReportTask)
+            .where(ReportTask.id == task_id)
+            .where(ReportTask.user_id == user_id)
+        )
+        if not task:
+            return False
+        await db.execute(
+            delete(ReportSection)
+            .where(ReportSection.task_id == task_id)
+        )
+        await db.execute(
+            delete(ReportSection)
+            .where(ReportSection.task_id == task_id)
+        )
+        await db.execute(
+            delete(ReportTask)
+            .where(ReportTask.user_id == user_id)
+        )
+        await db.commit()
+        return True
     
