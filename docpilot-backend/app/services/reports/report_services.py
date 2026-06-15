@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.report import ReportSection, ReportTask
@@ -173,3 +174,19 @@ class ReportService:
                 f"本章节围绕“{section_config.get('requirement', '')}”展开。"
                 f"LLM 生成暂不可用，以下为检索到的参考内容：\n\n{context[:1000]}"
             )
+
+    async def get_report_tasks(
+            self,
+            db: AsyncSession,
+            user_id: int,
+            status: str = "success",
+    ) -> list[ReportTask]:
+        """获取报告任务列表。"""
+        result = await db.execute(
+            select(ReportTask)
+            .where(ReportTask.user_id == user_id)
+            .where(ReportTask.status == status)
+        )
+
+        return result.scalars().all()
+    

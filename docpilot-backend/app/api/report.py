@@ -2,7 +2,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from app.utils.response import ApiResponse
 from app.db.session import get_db
 from app.models.report import ReportSource
 from app.models.users import User
@@ -26,6 +26,9 @@ async def create_report_task(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    '''
+    创建报告任务
+    '''
     try:
         task = await report_service.create_report_task(
             db=db,
@@ -127,3 +130,22 @@ async def create_report_task(
             status_code=500,
             detail=f"报告任务创建失败：{exc}",
         ) from exc
+    
+@router.get("/tasks")
+async def get_report_tasks(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    '''
+    获取报告任务列表
+    '''
+    task_list = await report_service.get_report_tasks(
+        db=db,
+        user_id=current_user.id,
+    )
+
+
+    return  ApiResponse(
+        message="获取成功",
+        data=[ReportTaskResponse.model_validate(task) for task in task_list]
+        )

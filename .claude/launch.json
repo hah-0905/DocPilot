@@ -3,9 +3,9 @@
   "configurations": [
     {
       "name": "docpilot-dev",
+      "autoPort": true,
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["vite", "--host", "0.0.0.0"],
-      "port": 5173
+      "runtimeArgs": ["vite", "--host", "0.0.0.0"]
     }
   ]
 }
