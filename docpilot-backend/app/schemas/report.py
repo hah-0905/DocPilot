@@ -1,6 +1,6 @@
+from datetime import datetime
 from typing import Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field
-
 
 
 class ReportTaskCreate(BaseModel):
@@ -21,7 +21,26 @@ class ReportTaskResponse(BaseModel):
         populate_by_name=True,
     )
 
-    task_id: int=Field(validation_alias="id")
+    task_id: int = Field(validation_alias="id")
     title: str
     status: str
     result_content: str | None = None
+
+
+class ReportExportCreate(BaseModel):
+    export_format: Literal["markdown"] = "markdown"
+
+
+class ReportExportResponse(BaseModel):
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True,
+    )
+
+    export_id: int = Field(validation_alias="id")
+    task_id: int
+    export_format: str
+    file_name: str | None = None
+    size_bytes: int | None = None
+    status: str
+    created_at: datetime

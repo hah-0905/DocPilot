@@ -68,7 +68,7 @@ class ReportService:
         await db.flush()
 
         return report_section
-
+    
     async def build_default_sections(
         self,
         report_type: str,

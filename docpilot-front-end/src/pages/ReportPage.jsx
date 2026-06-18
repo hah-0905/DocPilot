@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { getKnowledgeBases } from "../api/knowledgeBase";
-import { createReportTask, deleteReportTask, getReportTask, getReportTasks } from "../api/report";
+import {
+  createReportExport,
+  createReportTask,
+  deleteReportTask,
+  downloadReportExport,
+  getReportExports,
+  getReportTask,
+  getReportTasks,
+} from "../api/report";
 
 const REPORT_TYPES = [
   { value: "technical_review", label: "技术综述" },
@@ -70,8 +78,19 @@ function normalizeReportTasks(data) {
   return [];
 }
 
+function normalizeReportExports(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.exports)) return data.exports;
+  if (Array.isArray(data?.items)) return data.items;
+  return [];
+}
+
 function getTaskId(item) {
   return item?.task_id ?? item?.id;
+}
+
+function getExportId(item) {
+  return item?.export_id ?? item?.id;
 }
 
 function getStatusLabel(status) {
@@ -94,6 +113,14 @@ function formatDateTime(value) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatFileSize(value) {
+  const size = Number(value);
+  if (!Number.isFinite(size) || size <= 0) return "";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function formatMarkdown(markdown) {
@@ -222,6 +249,10 @@ export default function ReportPage() {
   const [task, setTask] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [tasksLoading, setTasksLoading] = useState(false);
+  const [exports, setExports] = useState([]);
+  const [exportsLoading, setExportsLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [downloadingExportId, setDownloadingExportId] = useState("");
   const [detailLoading, setDetailLoading] = useState(false);
   const [deletingTaskId, setDeletingTaskId] = useState("");
   const [loading, setLoading] = useState(false);
@@ -242,6 +273,23 @@ export default function ReportPage() {
       if (!silent) setError(err.message || "报告列表加载失败");
     } finally {
       if (!silent) setTasksLoading(false);
+    }
+  };
+
+  const loadReportExports = async (taskId, { silent = false } = {}) => {
+    if (!taskId) {
+      setExports([]);
+      return;
+    }
+    if (!silent) setExportsLoading(true);
+    try {
+      const data = await getReportExports(taskId);
+      setExports(normalizeReportExports(data));
+    } catch (err) {
+      setExports([]);
+      if (!silent) setError(err.message || "导出记录加载失败");
+    } finally {
+      if (!silent) setExportsLoading(false);
     }
   };
 
@@ -299,8 +347,10 @@ export default function ReportPage() {
       });
       setTask(result);
       setMarkdown(result?.result_content || "");
+      setExports([]);
       setNotice("报告已生成");
       await loadReportTasks({ silent: true });
+      await loadReportExports(getTaskId(result), { silent: true });
     } catch (err) {
       setError(err.message || "报告生成失败");
     } finally {
@@ -313,17 +363,44 @@ export default function ReportPage() {
     setNotice("已复制 Markdown");
   };
 
-  const handleDownload = () => {
-    const blob = new Blob([markdown || ""], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${title.trim() || "report"}.md`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-    setNotice("已导出 Markdown 文件");
+  const handleDownload = async () => {
+    const taskId = getTaskId(task);
+    if (!taskId) {
+      setError("请先选择或生成一个报告任务");
+      return;
+    }
+
+    setExporting(true);
+    setError("");
+    setNotice("");
+    try {
+      const created = await createReportExport(taskId, "markdown");
+      const exportId = getExportId(created);
+      await downloadReportExport(exportId, created?.file_name || `${title.trim() || "report"}.md`);
+      setNotice("导出文件已生成并开始下载");
+      await loadReportExports(taskId, { silent: true });
+    } catch (err) {
+      setError(err.message || "报告导出失败");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleDownloadExistingExport = async (exportItem) => {
+    const exportId = getExportId(exportItem);
+    if (!exportId) return;
+
+    setDownloadingExportId(String(exportId));
+    setError("");
+    setNotice("");
+    try {
+      await downloadReportExport(exportId, exportItem?.file_name || `${title.trim() || "report"}.md`);
+      setNotice("导出文件已开始下载");
+    } catch (err) {
+      setError(err.message || "导出文件下载失败");
+    } finally {
+      setDownloadingExportId("");
+    }
   };
 
   const handleSave = () => {
@@ -351,6 +428,7 @@ export default function ReportPage() {
       setTask(result);
       setTitle(result?.title || title);
       setMarkdown(result?.result_content || "");
+      await loadReportExports(taskId, { silent: true });
     } catch (err) {
       setError(err.message || "报告详情加载失败");
     } finally {
@@ -370,6 +448,7 @@ export default function ReportPage() {
       if (String(getTaskId(task)) === String(taskId)) {
         setTask(null);
         setMarkdown("");
+        setExports([]);
       }
       setNotice("报告任务已删除");
     } catch (err) {
@@ -534,10 +613,50 @@ export default function ReportPage() {
           </div>
           <div className="report-actions">
             <button type="button" onClick={handleCopy}><ReportIcon name="copy" size={16} />复制 Markdown</button>
-            <button type="button" onClick={handleDownload}><ReportIcon name="download" size={16} />导出 Markdown</button>
+            <button type="button" onClick={handleDownload} disabled={exporting || !getTaskId(task)}>
+              <ReportIcon name="download" size={16} />{exporting ? "导出中..." : "导出 Markdown"}
+            </button>
             <button type="button" onClick={handleSave}><ReportIcon name="save" size={16} />保存记录</button>
             <button type="button" onClick={handleGenerate} disabled={loading}><ReportIcon name="refresh" size={16} />重新生成</button>
           </div>
+        </div>
+
+        <div className="report-export-panel">
+          <div className="report-export-panel__header">
+            <span>导出记录</span>
+            {getTaskId(task) && (
+              <button type="button" onClick={() => loadReportExports(getTaskId(task))} disabled={exportsLoading}>
+                <ReportIcon name="refresh" size={14} />
+              </button>
+            )}
+          </div>
+          {exports.length === 0 ? (
+            <p className="report-export-empty">{exportsLoading ? "导出记录加载中..." : "当前报告暂无导出记录"}</p>
+          ) : (
+            <div className="report-export-list">
+              {exports.map((item) => {
+                const exportId = getExportId(item);
+                const isDownloading = downloadingExportId === String(exportId);
+                const fileSize = formatFileSize(item.size_bytes);
+
+                return (
+                  <div className="report-export-item" key={exportId}>
+                    <div>
+                      <strong>{item.file_name || `导出文件 #${exportId}`}</strong>
+                      <span>
+                        {item.export_format || "markdown"}
+                        {fileSize ? ` · ${fileSize}` : ""}
+                        {item.created_at ? ` · ${formatDateTime(item.created_at)}` : ""}
+                      </span>
+                    </div>
+                    <button type="button" onClick={() => handleDownloadExistingExport(item)} disabled={isDownloading}>
+                      <ReportIcon name="download" size={14} />{isDownloading ? "下载中..." : "下载"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <article className="report-markdown">

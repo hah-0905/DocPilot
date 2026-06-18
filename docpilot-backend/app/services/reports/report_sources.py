@@ -1,9 +1,11 @@
 from decimal import Decimal
+
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.report import ReportSource
 
 
-class ReportSourceService:
+class ReportSourcesService:
     async def save_report_sources(
         self,
         db: AsyncSession,
@@ -23,9 +25,9 @@ class ReportSourceService:
                 kb_id=kb_id,
                 document_id=int(chunk["document_id"]),
                 chunk_id=chunk["chunk_id"],
-                score=Decimal(str(score)) if score else None,
+                score=Decimal(str(score)) if score is not None else None,
                 citation_no=citation_no,
-                quote_text=chunk.get("content"),
+                quote_text=chunk.get("quote_text") or chunk.get("content"),
             )
 
             db.add(source)

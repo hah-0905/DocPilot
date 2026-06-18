@@ -6113,6 +6113,105 @@ button:disabled {
   opacity: 0.58;
 }
 
+.report-export-panel {
+  display: grid;
+  gap: 10px;
+  padding: 14px 22px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.report-export-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.report-export-panel__header button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #475569;
+}
+
+.report-export-panel__header button:hover:not(:disabled) {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.report-export-empty {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.report-export-list {
+  display: grid;
+  gap: 8px;
+}
+
+.report-export-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 10px 12px;
+}
+
+.report-export-item > div {
+  min-width: 0;
+}
+
+.report-export-item strong {
+  display: block;
+  overflow: hidden;
+  color: #1e293b;
+  font-size: 13px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-export-item span {
+  display: block;
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.report-export-item button {
+  display: inline-flex;
+  height: 32px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1e293b;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 0 10px;
+}
+
+.report-export-item button:hover:not(:disabled) {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
 .report-markdown {
   flex: 1;
   min-height: 0;
@@ -6206,6 +6305,19 @@ button:disabled {
   }
 
   .report-actions button {
+    justify-content: center;
+  }
+
+  .report-export-panel {
+    padding: 12px 14px;
+  }
+
+  .report-export-item {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .report-export-item button {
     justify-content: center;
   }
 
