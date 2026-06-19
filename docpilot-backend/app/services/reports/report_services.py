@@ -68,7 +68,7 @@ class ReportService:
         await db.flush()
 
         return report_section
-    
+
     async def build_default_sections(
         self,
         report_type: str,
@@ -84,8 +84,10 @@ class ReportService:
 
             return [
                 {"order_no": 1, "title": "背景", "requirement": "说明该技术的背景、问题来源和研究意义"},
-                {"order_no": 2, "title": "核心流程", "requirement": "说明该技术的主要流程、关键步骤和整体架构"},
-                {"order_no": 3, "title": "关键技术", "requirement": "总结相关关键技术、方法路线和系统组成"},
+                {"order_no": 2, "title": "核心流程",
+                    "requirement": "说明该技术的主要流程、关键步骤和整体架构"},
+                {"order_no": 3, "title": "关键技术",
+                    "requirement": "总结相关关键技术、方法路线和系统组成"},
                 {"order_no": 4, "title": "应用价值", "requirement": "说明该技术的落地价值、优势和限制"},
             ]
 
@@ -189,7 +191,6 @@ class ReportService:
         )
 
         return result.scalars().all()
-    
 
     async def get_report_task_detail(
             self,
@@ -206,36 +207,26 @@ class ReportService:
         )
 
         return result.scalars().first()
-    
 
     async def delete_report_task(
             self,
             db: AsyncSession,
             task_id: int,
             user_id: int,
-    )-> None:
+    ) -> None:
         '''
         删除报告任务
         '''
-        task = await db.execute(
+        result = await db.execute(
             select(ReportTask)
             .where(ReportTask.id == task_id)
             .where(ReportTask.user_id == user_id)
         )
-        if not task:
+        task = result.scalar_one_or_none()
+
+        if task is None:
             return False
-        await db.execute(
-            delete(ReportSection)
-            .where(ReportSection.task_id == task_id)
-        )
-        await db.execute(
-            delete(ReportSection)
-            .where(ReportSection.task_id == task_id)
-        )
-        await db.execute(
-            delete(ReportTask)
-            .where(ReportTask.user_id == user_id)
-        )
+
+        await db.delete(task)
         await db.commit()
         return True
-    
