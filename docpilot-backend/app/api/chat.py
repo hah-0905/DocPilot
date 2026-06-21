@@ -111,11 +111,12 @@ async def list_chat_sessions(
             }
     """
     result = await db.execute(
-        select(ChatSession).where(
-            ChatSession.user_id == current_user.id
-        ).order_by(
-            ChatSession.created_at.desc()
+        select(ChatSession)
+        .where(
+            ChatSession.user_id == current_user.id,
+            ChatSession.status == "active",
         )
+        .order_by(ChatSession.created_at.desc())
     )
     sessions = result.scalars().all()
 
@@ -169,7 +170,7 @@ async def delete_chat_session(
     current_user: str = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    deleted = await chat_service.delete_session(db,current_user, session_id)
+    deleted = await chat_service.delete_session(db, current_user, session_id)
 
     if not deleted:
         return AppException(

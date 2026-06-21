@@ -6,6 +6,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exception_handlers import AppException
 from app.models.chat import ChatMessage, ChatSession, ChatSessionKb
+from app.models.kb import KnowledgeBase
 from app.models.users import User
 from app.models.workspaces import Workspace
 from app.services.llm_service import LLMService
@@ -32,10 +33,15 @@ class ChatService:
             return None
         return value if value > 0 else None
 
-    async def _get_default_workspace(self, db: AsyncSession) -> Workspace:
+    async def _get_default_workspace(
+            self, 
+            db: AsyncSession,
+            current_user: User,
+            ) -> Workspace:
         result = await db.execute(
             select(Workspace)
-            .where(Workspace.status == "active")
+            .where(Workspace.status == "active",
+                   Workspace.owner_user_id == current_user.id)
             .order_by(Workspace.id.asc())
             .limit(1)
         )
@@ -43,24 +49,40 @@ class ChatService:
         if workspace is not None:
             return workspace
 
-        result = await db.execute(
-            select(User)
-            .where(User.status == "active")
-            .order_by(User.id.asc())
-            .limit(1)
-        )
-        user = result.scalar_one_or_none()
-        if user is None:
-            raise RuntimeError("No active user is available for chat sessions")
-
         workspace = Workspace(
             name="Default Workspace",
-            owner_user_id=user.id,
+            owner_user_id=current_user.id,
             status="active",
         )
         db.add(workspace)
         await db.flush()
         return workspace
+
+    async def _ensure_owned_knowledge_base(
+        self,
+        db: AsyncSession,
+        current_user: User,
+        kb_id: int | None,
+    ) -> None:
+        if kb_id is None:
+            return
+
+        result = await db.execute(
+            select(KnowledgeBase)
+            .join(Workspace, Workspace.id == KnowledgeBase.workspace_id)
+            .where(
+                KnowledgeBase.id == kb_id,
+                KnowledgeBase.status == "active",
+                Workspace.status == "active",
+                Workspace.owner_user_id == current_user.id,
+            )
+        )
+        if result.scalar_one_or_none() is None:
+            raise AppException(
+                message="知识库不存在或无权访问",
+                code=404,
+                status_code=404,
+            )
 
     def _build_messages(
         self,
@@ -140,10 +162,15 @@ class ChatService:
             chat_session = result.scalar_one_or_none()
             if chat_session is not None:
                 return chat_session
+            raise AppException(
+                message="会话不存在或无权访问",
+                code=404,
+                status_code=404,
+            )
 
-        workspace = await self._get_default_workspace(db)
+        workspace = await self._get_default_workspace(db, current_user)
         chat_session = ChatSession(
-            user_id=workspace.owner_user_id,
+            user_id=current_user.id,
             workspace_id=workspace.id,
             title=self.build_session_title(message),
             status="active",
@@ -201,8 +228,9 @@ class ChatService:
             )
 
         # 1. 获取历史消息
-        chat_session = await self._get_or_create_session(db, session_id, message)
+        chat_session = await self._get_or_create_session(db, user, session_id, message)
         history = await self._get_history(db, chat_session.id)
+        await self._ensure_owned_knowledge_base(db, user, kb_id)
 
         # 2. 检索相关 chunks
         retrieved_chunks = []
@@ -280,6 +308,7 @@ class ChatService:
 
         chat_session = await self._get_or_create_session(db, user, session_id, message)
         history = await self._get_history(db, chat_session.id)
+        await self._ensure_owned_knowledge_base(db, user, kb_id)
 
         retrieved_chunks = []
         if kb_id:
@@ -354,8 +383,12 @@ class ChatService:
 
         result = await db.execute(
             select(ChatMessage)
-            .where(ChatMessage.session_id == parsed_session_id,
-                   ChatMessage.user_id == user.id)
+            .join(ChatSession, ChatSession.id == ChatMessage.session_id)
+            .where(
+                ChatMessage.session_id == parsed_session_id,
+                ChatSession.user_id == user.id,
+                ChatSession.status == "active",
+            )
             .order_by(ChatMessage.created_at.asc())
         )
         messages = result.scalars().all()
