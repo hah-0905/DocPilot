@@ -4,7 +4,7 @@ from typing import Any
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from app.core.exception_handlers import AppException
 from app.models.chat import ChatMessage, ChatSession, ChatSessionKb
 from app.models.users import User
 from app.models.workspaces import Workspace
@@ -166,17 +166,37 @@ class ChatService:
                 content=content,
                 model_name=self.llm_service.model if role == "assistant" else None,
                 latency_ms=latency_ms,
-                metadata_={"used_chunks": chunks or []} if chunks is not None else None,
+                metadata_={"used_chunks": chunks or []
+                           } if chunks is not None else None,
             )
         )
 
+    async def get_users_by_id(
+        self,
+        db: AsyncSession,
+        current_user: User,
+    ) -> User | None:
+        result = await db.execute(
+            select(User)
+            .where(User.id == current_user.id)
+        )
+        return result.scalar_one_or_none()
     async def chat(
         self,
         db: AsyncSession,
+        current_user: User,
         session_id: str,
         message: str,
         kb_id: int | None = None,
     ) -> dict:
+        user = current_user
+        if not user:
+            raise AppException(
+                message="用户不存在",
+                code=404,
+                status_code=404
+            )
+
         # 1. 获取历史消息
         chat_session = await self._get_or_create_session(db, session_id, message)
         history = await self._get_history(db, chat_session.id)

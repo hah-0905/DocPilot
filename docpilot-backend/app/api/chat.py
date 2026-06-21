@@ -9,6 +9,7 @@ from app.db.session import get_db
 from app.utils.response import ApiResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.chat import ChatSession
+from app.services.users_service import get_current_user
 from app.core.exceptions import AppException
 
 
@@ -20,6 +21,7 @@ chat_service = ChatService()
 @router.post("/completions")
 async def create_chat_completions(
     request: ChatCompletionRequest,
+    current_user: str = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     '''
@@ -39,6 +41,7 @@ async def create_chat_completions(
     if not request.stream:
         result = await chat_service.chat(
             db=db,
+            current_user=current_user,
             session_id=request.session_id,
             message=request.message,
             kb_id=request.kb_id,
