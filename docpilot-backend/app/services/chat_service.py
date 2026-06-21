@@ -124,6 +124,7 @@ class ChatService:
     async def _get_or_create_session(
         self,
         db: AsyncSession,
+        current_user: User,
         session_id: str | int | None,
         message: str,
     ) -> ChatSession:
@@ -133,6 +134,7 @@ class ChatService:
                 select(ChatSession).where(
                     ChatSession.id == parsed_session_id,
                     ChatSession.status == "active",
+                    ChatSession.user_id == current_user.id
                 )
             )
             chat_session = result.scalar_one_or_none()
@@ -181,6 +183,7 @@ class ChatService:
             .where(User.id == current_user.id)
         )
         return result.scalar_one_or_none()
+
     async def chat(
         self,
         db: AsyncSession,
@@ -262,11 +265,20 @@ class ChatService:
     async def stream_chat(
         self,
         db: AsyncSession,
+        current_user: User,
         session_id: str,
         message: str,
         kb_id: int | None = None,
     ) -> AsyncGenerator[Any, None]:
-        chat_session = await self._get_or_create_session(db, session_id, message)
+        user = current_user
+        if not user:
+            raise AppException(
+                message="用户不存在",
+                code=404,
+                status_code=404
+            )
+
+        chat_session = await self._get_or_create_session(db, user, session_id, message)
         history = await self._get_history(db, chat_session.id)
 
         retrieved_chunks = []
@@ -326,15 +338,24 @@ class ChatService:
     async def get_messages(
         self,
         db: AsyncSession,
+        current_user: User,
         session_id: str | int,
     ) -> list[dict[str, Any]]:
+        user = current_user
+        if not user:
+            raise AppException(
+                message="用户不存在",
+                code=404,
+                status_code=404
+            )
         parsed_session_id = self._parse_session_id(session_id)
         if parsed_session_id is None:
             return []
 
         result = await db.execute(
             select(ChatMessage)
-            .where(ChatMessage.session_id == parsed_session_id)
+            .where(ChatMessage.session_id == parsed_session_id,
+                   ChatMessage.user_id == user.id)
             .order_by(ChatMessage.created_at.asc())
         )
         messages = result.scalars().all()
@@ -350,14 +371,23 @@ class ChatService:
     async def delete_session(
         self,
         db: AsyncSession,
+        current_user: User,
         session_id: str | int,
     ) -> bool:
+        user = current_user
+        if not user:
+            raise AppException(
+                message="用户不存在",
+                code=404,
+                status_code=404
+            )
         parsed_session_id = self._parse_session_id(session_id)
         if parsed_session_id is None:
             return False
 
         result = await db.execute(
-            select(ChatSession).where(ChatSession.id == parsed_session_id)
+            select(ChatSession).where(ChatSession.id == parsed_session_id,
+                                      ChatSession.user_id == user.id)
         )
         chat_session = result.scalar_one_or_none()
         if chat_session is None:

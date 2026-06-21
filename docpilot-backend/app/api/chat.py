@@ -59,6 +59,7 @@ async def create_chat_completions(
         try:
             async for chunk in chat_service.stream_chat(
                 db=db,
+                current_user=current_user,
                 session_id=request.session_id,
                 message=request.message,
                 kb_id=request.kb_id,
@@ -84,7 +85,8 @@ async def create_chat_completions(
 
 @router.get("/sessions")
 async def list_chat_sessions(
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: str = Depends(get_current_user),
 ) -> ApiResponse:
     """
     获取所有聊天会话列表，并按创建时间升序排序。
@@ -109,7 +111,11 @@ async def list_chat_sessions(
             }
     """
     result = await db.execute(
-        select(ChatSession).order_by(ChatSession.created_at.desc())
+        select(ChatSession).where(
+            ChatSession.user_id == current_user.id
+        ).order_by(
+            ChatSession.created_at.desc()
+        )
     )
     sessions = result.scalars().all()
 
@@ -131,6 +137,7 @@ async def list_chat_sessions(
 @router.get("/sessions/{session_id}/messages")
 async def get_chat_messages(
     session_id: int,
+    current_user: str = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> ApiResponse:
     """
@@ -147,7 +154,7 @@ async def get_chat_messages(
             - session_id (int): 请求的会话ID；
             - messages (List): 该会话下的所有消息列表。
     """
-    messages = await chat_service.get_messages(db, session_id)
+    messages = await chat_service.get_messages(db, current_user, session_id)
     return ApiResponse(
         data={
             "session_id": session_id,
@@ -159,9 +166,10 @@ async def get_chat_messages(
 @router.delete("/sessions/{session_id}")
 async def delete_chat_session(
     session_id: int,
+    current_user: str = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    deleted = await chat_service.delete_session(db, session_id)
+    deleted = await chat_service.delete_session(db,current_user, session_id)
 
     if not deleted:
         return AppException(
