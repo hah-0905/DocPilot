@@ -5,6 +5,9 @@ from app.db.session import get_db
 from app.services import users_service as users
 from app.utils.response import ApiResponse
 from starlette import status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from app.core.redis import redis_client
+from app.services.users_service import bearer_scheme
 
 router = APIRouter(prefix="/api/user", tags=["用户相关接口"])
 
@@ -68,6 +71,13 @@ async def login(
         )
     )
 
+@router.post("/logout")
+async def logout(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+):
+    token = credentials.credentials
+    await redis_client.delete(f"login:token:{token}")
+    return ApiResponse(message="退出成功")
 
 @router.post("/update/{user_id}")
 async def update_user_info(

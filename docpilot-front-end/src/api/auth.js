@@ -95,3 +95,13 @@ export function clearAuth() {
   sessionStorage.removeItem(TOKEN_KEY);
   sessionStorage.removeItem(USER_KEY);
 }
+
+export async function logoutUser() {
+  const auth = getStoredAuth();
+  if (!auth?.token) return;
+
+  await fetch(`${API_BASE_URL}/api/user/logout`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${auth.token}` },
+  });
+}

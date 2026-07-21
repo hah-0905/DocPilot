@@ -1,16 +1,14 @@
-from datetime import datetime, timedelta
-
-from fastapi import APIRouter, Depends, HTTPException
+from app.core.redis import redis_client
+from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from app.db.session import get_db
-from app.models.users import AuthActionToken, User
+from app.models.users import User
 from starlette import status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.utils import security
 from app.schemas.users import UserInfoBase, UserLogin
 import uuid
-import hashlib
 from app.models.workspaces import Workspace
 from app.models.workspace_members import WorkspaceMember
 
@@ -63,39 +61,33 @@ async def create_user(user_data: UserInfoBase, db: AsyncSession):
 
 async def create_token(email: str, db: AsyncSession):
     '''
-    生成 Token + 添加到数据库
+    生成登录 Token，并缓存到 Redis
     '''
     # 生成 Token + 设置过期时间 → 查询数据库当前用户是否有 Token → 有：更新；没有：添加
-    action_type = "login"
-    token = str(uuid.uuid4())
-    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    # action_type = "login"
+    # token = str(uuid.uuid4())
+    # token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
 
-    # timedelta(days=7, hours=2, minutes=30, seconds=10)
-    expires_at = datetime.now() + timedelta(days=7)
+    # # timedelta(days=7, hours=2, minutes=30, seconds=10)
+    # expires_at = datetime.now() + timedelta(days=7)
     user = await get_user_by_email(email, db)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    query = select(AuthActionToken).where(
-        AuthActionToken.user_id == user.id,
-        AuthActionToken.action_type == action_type,
-    )
-    result = await db.execute(query)
-    user_token = result.scalar_one_or_none()
+    # query = select(AuthActionToken).where(
+    #     AuthActionToken.user_id == user.id,
+    #     AuthActionToken.action_type == action_type,
+    # )
+    # result = await db.execute(query)
+    # user_token = result.scalar_one_or_none()
 
-    if user_token:
-        user_token.token_hash = token_hash
-        user_token.expires_at = expires_at
-        user_token.used_at = None
-    else:
-        user_token = AuthActionToken(
-            user_id=user.id,
-            token_hash=token_hash,
-            action_type=action_type,
-            target=user.email,
-            expires_at=expires_at,
-        )
-        db.add(user_token)
-    await db.commit()
+    token = str(uuid.uuid4())
+
+    await redis_client.set(
+        f"login:token:{token}",
+        str(user.id),
+        ex=60 * 60 * 24 * 7
+    )
+
     return token
 
 
@@ -103,32 +95,27 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    """
+    '''
     获取当前用户
-    :param credentials: 认证凭证
-    :param db: 数据库连接
-    :return: 用户信息
-    """
-    token_hash = hashlib.sha256(
-        credentials.credentials.encode("utf-8")
-    ).hexdigest()
+    '''
+    token = credentials.credentials
+    redis_key = f"login:token:{token}"
 
-    query = select(AuthActionToken).where(
-        AuthActionToken.token_hash == token_hash,
-        AuthActionToken.action_type == "login",
-        AuthActionToken.expires_at > datetime.now(),
-        AuthActionToken.used_at.is_(None),
-    )
-    result = await db.execute(query)
-    user_token = result.scalar_one_or_none()
+    # 查询 Redis
+    user_id = await redis_client.get(redis_key)
 
-    if not user_token:
+    if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="无效或过期的登录凭证"
         )
 
-    user = await db.get(User, user_token.user_id)
+    # 滑动续期（重新设置 7 天过期时间）
+    await redis_client.expire(redis_key, 60 * 60 * 24 * 7)
+
+    user = await db.get(User, int(user_id))
+
+    # 查询用户
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -205,7 +192,7 @@ async def update_user_info(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="用户不存在"
         )
-    
+
     # 更新用户信息
     if user_data.email is not None:
         user.email = user_data.email

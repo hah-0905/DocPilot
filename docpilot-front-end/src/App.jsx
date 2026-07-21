@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { clearAuth, getStoredAuth, saveAuth } from "./api/auth";
+import { clearAuth, getStoredAuth, logoutUser, saveAuth } from "./api/auth";
 import DashboardPage from "./pages/DashboardPage";
 import KnowledgeBasePage from "./pages/KnowledgeBasePage";
 import KnowledgeBaseDetailPage from "./pages/KnowledgeBaseDetailPage";
@@ -76,7 +76,12 @@ export default function App() {
     [navigate]
   );
 
-  const handleLogout = useCallback(() => {
+  const handleLogout = useCallback(async () => {
+    try {
+      await logoutUser();
+    } catch {
+      // 即使后端调用失败也清除本地状态
+    }
     clearAuth();
     setAuth(null);
     navigate("/login", { replace: true });
