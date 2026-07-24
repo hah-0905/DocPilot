@@ -1,3 +1,4 @@
+from app.core.config import get_settings
 from app.core.redis import redis_client
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -7,12 +8,13 @@ from app.models.users import User
 from starlette import status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.utils import security
-from app.schemas.users import UserInfoBase, UserLogin
+from app.schemas.users import PasswordChangeRequest, UserCreateRequest, UserLogin, UserUpdateRequest
 import uuid
+from redis.exceptions import RedisError
 from app.models.workspaces import Workspace
 from app.models.workspace_members import WorkspaceMember
 
-bearer_scheme = HTTPBearer()
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
 async def get_user_by_email(email: str, db: AsyncSession):
@@ -39,7 +41,7 @@ async def get_user_by_username(username: str, db: AsyncSession):
     return result.scalar_one_or_none()
 
 
-async def create_user(user_data: UserInfoBase, db: AsyncSession):
+async def create_user(user_data: UserCreateRequest, db: AsyncSession):
     '''
     创建用户
     :param user_data: 用户信息
@@ -82,27 +84,44 @@ async def create_token(email: str, db: AsyncSession):
 
     token = str(uuid.uuid4())
 
-    await redis_client.set(
-        f"login:token:{token}",
-        str(user.id),
-        ex=60 * 60 * 24 * 7
-    )
+    try:
+        await redis_client.set(
+            f"login:token:{token}",
+            str(user.id),
+            ex=get_settings().redis_token_ttl_seconds,
+        )
+    except RedisError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service is temporarily unavailable",
+        ) from exc
 
     return token
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
     '''
     获取当前用户
     '''
+    if not credentials or not credentials.credentials.strip():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired authentication credentials",
+        )
     token = credentials.credentials
     redis_key = f"login:token:{token}"
 
     # 查询 Redis
-    user_id = await redis_client.get(redis_key)
+    try:
+        user_id = await redis_client.get(redis_key)
+    except RedisError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service is temporarily unavailable",
+        ) from exc
 
     if not user_id:
         raise HTTPException(
@@ -111,15 +130,35 @@ async def get_current_user(
         )
 
     # 滑动续期（重新设置 7 天过期时间）
-    await redis_client.expire(redis_key, 60 * 60 * 24 * 7)
+    try:
+        await redis_client.expire(redis_key, get_settings().redis_token_ttl_seconds)
+    except RedisError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service is temporarily unavailable",
+        ) from exc
 
-    user = await db.get(User, int(user_id))
+    try:
+        user_id_int = int(user_id)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired authentication credentials",
+        ) from None
+
+    user = await db.get(User, user_id_int)
 
     # 查询用户
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="用户不存在"
+        )
+
+    if user.status != "active":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account is unavailable",
         )
 
     return user
@@ -176,7 +215,7 @@ async def create_workspace(user_data, db: AsyncSession):
 
 async def update_user_info(
         user_id: int,
-        user_data: UserInfoBase,
+        user_data: UserUpdateRequest,
         db: AsyncSession
 ):
 
@@ -193,6 +232,15 @@ async def update_user_info(
             detail="用户不存在"
         )
 
+    if user_data.email is not None:
+        existing_user = await get_user_by_email(user_data.email, db)
+        if existing_user and existing_user.id != user.id:
+            raise HTTPException(status_code=400, detail="Email is already in use")
+    if user_data.username is not None:
+        existing_user = await get_user_by_username(user_data.username, db)
+        if existing_user and existing_user.id != user.id:
+            raise HTTPException(status_code=400, detail="Username is already in use")
+
     # 更新用户信息
     if user_data.email is not None:
         user.email = user_data.email
@@ -200,9 +248,20 @@ async def update_user_info(
         user.username = user_data.username
     if user_data.display_name is not None:
         user.display_name = user_data.display_name
-    if user_data.password is not None:
-        user.password_hash = security.get_hash_password(user_data.password)
+    await db.commit()
+    await db.refresh(user)
+    return user
 
+
+async def change_password(
+    user: User,
+    password_data: PasswordChangeRequest,
+    db: AsyncSession,
+) -> User:
+    if not security.verify_password(password_data.current_password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect")
+
+    user.password_hash = security.get_hash_password(password_data.new_password)
     await db.commit()
     await db.refresh(user)
     return user

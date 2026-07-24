@@ -26,8 +26,7 @@ async function request(path, options = {}) {
 
 /*
  * ===============================================================
- * 设置相关接口 — 后端暂无对应 endpoint
- * TODO: 待后端提供设置/密码修改接口后对接
+ * 设置相关接口
  * ===============================================================
  */
 
@@ -38,10 +37,11 @@ export function getLocalUser() {
 }
 
 /** 更新用户资料 */
-export async function updateProfile(_data) {
-  // TODO: replace with PUT /api/user/profile
-  console.warn("[TODO] updateProfile — backend endpoint not available");
-  throw new Error("个人资料编辑接口暂未开放");
+export async function updateProfile(data) {
+  return request("/api/user/me", {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }
 
 /** 保存模型设置 */
@@ -66,8 +66,12 @@ export async function saveReportSettings(_data) {
 }
 
 /** 修改密码 */
-export async function changePassword(_data) {
-  // TODO: replace with POST /api/user/change-password
-  console.warn("[TODO] changePassword — backend endpoint not available");
-  throw new Error("修改密码接口暂未开放");
+export async function changePassword(data) {
+  return request("/api/user/me/password", {
+    method: "POST",
+    body: JSON.stringify({
+      current_password: data.currentPassword,
+      new_password: data.newPassword,
+    }),
+  });
 }

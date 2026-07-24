@@ -11,6 +11,7 @@ env/
 .env
 .env.*
 !.env.example
+!.env.dev.example
 
 # IDE
 .idea/
@@ -27,6 +28,7 @@ tmp/
 
 # Vector database / indexes
 chroma_db/
+data/
 faiss_index/
 milvus_data/
 qdrant_storage/
@@ -38,7 +40,8 @@ qdrant_storage/
 
 # OS
 .DS_Store
-Thumbs.dbdocpilot-backend/.env
+Thumbs.db
+docpilot-backend/.env
 .env
 
 #export

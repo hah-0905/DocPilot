@@ -8,6 +8,8 @@ from fastapi import UploadFile
 from sqlalchemy import String, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import AppException
+from app.core.config import get_settings
+from app.core.storage import path_in_directory
 from app.models.chunk_embeddings import ChunkEmbedding
 from app.models.documents import Document, DocumentChunk, DocumentVersion
 from app.models.kb import KnowledgeBase
@@ -237,7 +239,7 @@ class DocumentService:
         kb_id: int,
         file: UploadFile,
     ) -> dict:
-        filename = file.filename or "unknown"
+        filename = Path(file.filename or "unknown").name
         file_bytes = await file.read()
 
         if not file_bytes:
@@ -267,13 +269,12 @@ class DocumentService:
         file_ext = Path(filename).suffix.lower().lstrip(".")
         file_sha256 = hashlib.sha256(file_bytes).hexdigest()
 
-        upload_dir = Path(__file__).resolve(
-        ).parents[2] / "uploads" / str(kb_id)
+        upload_root = Path(get_settings().upload_dir).expanduser().resolve()
+        upload_dir = upload_root / str(kb_id)
         upload_dir.mkdir(parents=True, exist_ok=True)
 
-        safe_name = Path(filename).name
-        stored_name = f"{file_sha256}_{safe_name}"
-        storage_path = upload_dir / stored_name
+        stored_name = f"{file_sha256}_{filename}"
+        storage_path = path_in_directory(upload_root, upload_dir / stored_name)
 
         storage_path.write_bytes(file_bytes)
 

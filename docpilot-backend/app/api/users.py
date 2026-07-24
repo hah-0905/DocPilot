@@ -1,20 +1,29 @@
-from fastapi import APIRouter, Depends, HTTPException, security
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.schemas.users import UserAuthResponse, UserInfoBase, UserInfoResponse, UserLogin
+from app.schemas.users import (
+    PasswordChangeRequest,
+    UserAuthResponse,
+    UserCreateRequest,
+    UserInfoResponse,
+    UserLogin,
+    UserUpdateRequest,
+)
 from app.db.session import get_db
 from app.services import users_service as users
 from app.utils.response import ApiResponse
 from starlette import status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.core.redis import redis_client
-from app.services.users_service import bearer_scheme
+from app.services.users_service import bearer_scheme, get_current_user
+from app.models.users import User
+from redis.exceptions import RedisError
 
 router = APIRouter(prefix="/api/user", tags=["用户相关接口"])
 
 
 @router.post("/register")
 async def register(
-    request: UserInfoBase,
+    request: UserCreateRequest,
     db: AsyncSession = Depends(get_db)
 ):
     # 检查用户是否存在
@@ -73,22 +82,45 @@ async def login(
 
 @router.post("/logout")
 async def logout(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ):
+    if not credentials or not credentials.credentials.strip():
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="无效或过期的登录凭证")
     token = credentials.credentials
-    await redis_client.delete(f"login:token:{token}")
+    try:
+        await redis_client.delete(f"login:token:{token}")
+    except RedisError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="认证服务暂时不可用") from exc
     return ApiResponse(message="退出成功")
 
-@router.post("/update/{user_id}")
-async def update_user_info(
-    user_id: int,
-    request: UserInfoBase,
-    db: AsyncSession = Depends(get_db)
+@router.patch("/me")
+async def update_current_user_info(
+    request: UserUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    
-    user = await users.update_user_info(
-        user_id,
-        request, 
-        db
-        )
-    return user
+    user = await users.update_user_info(current_user.id, request, db)
+    return ApiResponse(message="更新成功", data=UserInfoResponse.model_validate(user))
+
+
+@router.post("/me/password")
+async def change_current_user_password(
+    request: PasswordChangeRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await users.change_password(current_user, request, db)
+    return ApiResponse(message="密码修改成功")
+
+
+@router.post("/update/{user_id}", deprecated=True)
+async def update_user_info_legacy(
+    user_id: int,
+    request: UserUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权修改其他用户")
+    user = await users.update_user_info(current_user.id, request, db)
+    return ApiResponse(message="更新成功", data=UserInfoResponse.model_validate(user))

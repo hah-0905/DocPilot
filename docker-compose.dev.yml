@@ -1,0 +1,84 @@
+services:
+  backend:
+    build:
+      context: ./docpilot-backend
+    container_name: docpilot-backend
+    restart: unless-stopped
+    command:
+      - uvicorn
+      - main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --reload
+    environment:
+      APP_NAME: ${APP_NAME}
+      APP_ENV: ${APP_ENV}
+      DEBUG: ${DEBUG}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      REDIS_TOKEN_TTL_SECONDS: ${REDIS_TOKEN_TTL_SECONDS}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL}
+      MODEL_NAME: ${MODEL_NAME}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL}
+      UPLOAD_DIR: ${UPLOAD_DIR}
+      EXPORT_DIR: ${EXPORT_DIR}
+      CHROMA_PERSIST_DIR: ${CHROMA_PERSIST_DIR}
+      LOG_DIR: ${LOG_DIR}
+      SQL_ECHO: ${SQL_ECHO}
+      DB_POOL_SIZE: ${DB_POOL_SIZE}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW}
+      DB_POOL_RECYCLE: ${DB_POOL_RECYCLE}
+      DB_POOL_PRE_PING: ${DB_POOL_PRE_PING}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./docpilot-backend:/app
+      - ./data/uploads:/data/uploads
+      - ./data/exports:/data/exports
+      - ./data/chroma:/data/chroma
+      - ./data/logs:/data/logs
+    networks:
+      - docpilot_network
+    mem_limit: 768m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  frontend:
+    image: node:20-alpine
+    container_name: docpilot-frontend
+    restart: unless-stopped
+    working_dir: /app
+    environment:
+      VITE_BACKEND_URL: http://backend:8000
+    command:
+      - sh
+      - -c
+      - npm ci && npm run dev
+    ports:
+      - "127.0.0.1:5173:5173"
+    volumes:
+      - ./docpilot-front-end:/app
+      - frontend_node_modules:/app/node_modules
+    networks:
+      - docpilot_network
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  frontend_node_modules:
+
+networks:
+  docpilot_network:
+    external: true
+    name: docpilot_default

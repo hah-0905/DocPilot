@@ -140,26 +140,15 @@ cd DocPilot
 
 ### 2. 配置环境变量
 
-在项目根目录创建 `.env` 文件：
+复制开发环境模板，并仅在本地填写真实配置（不要提交该文件）：
 
-```env
-MYSQL_ROOT_PASSWORD=root123456
-MYSQL_DATABASE=docpilot
-MYSQL_USER=docpilot
-MYSQL_PASSWORD=docpilot123456
-
-DATABASE_URL=mysql+aiomysql://docpilot:docpilot123456@mysql:3306/docpilot
-
-OPENAI_API_KEY=your_openai_api_key
+```bash
+cp .env.dev.example .env.dev
 ```
-
-根据实际情况替换 `OPENAI_API_KEY` 和数据库密码。
 
 ### 3. 启动服务
 
-```bash
-docker compose up --build
-```
+请使用下文的“阿里云服务器开发部署”流程启动服务；MySQL 和 Redis 由独立基础设施 Compose 管理。
 
 启动后访问：
 
@@ -359,9 +348,77 @@ POST /chat/completions
 ## 注意事项
 
 1. 本项目仍处于持续开发阶段，部分功能可能尚未完全完善。
-2. 本地启动前需要正确配置 `.env` 文件。
+2. 本地启动前需要正确配置 `.env.dev`，并通过 Compose 的 `--env-file` 传入容器。
 3. 使用大模型相关能力前，需要配置有效的 API Key。
 4. 生产环境部署时应关闭 Debug 模式，并使用更安全的数据库密码和密钥管理方式。
+
+---
+
+## 阿里云服务器开发部署
+
+部署流程为：本地修改并测试 → 推送 GitHub → 服务器拉取代码 → Docker Compose 更新前后端。基础设施（MySQL、Redis）独立运行，应用 Compose 不会创建、删除或重建其数据卷。
+
+### 服务器拉取代码
+
+```bash
+sudo -iu warren
+cd /srv/DocPilot
+git status
+git pull origin main
+```
+
+拉取前必须检查 `git status`。日常开发不要使用 root，也不要用 `git reset --hard` 覆盖服务器上的修改。
+
+### 基础设施
+
+```bash
+docker compose \
+  -f docker-compose.infra.yml \
+  --env-file .env.infra \
+  up -d
+```
+
+不要执行 `docker compose down -v`，以免删除持久化数据卷。
+
+### 创建开发配置与启动前后端
+
+```bash
+cp .env.dev.example .env.dev
+```
+
+由部署人员填写 `.env.dev` 中的真实配置。随后启动应用服务：
+
+```bash
+docker compose \
+  -p docpilot-dev \
+  -f docker-compose.dev.yml \
+  --env-file .env.dev \
+  up -d --build
+```
+
+`docker-compose.dev.yml` 只包含 `backend` 和 `frontend`，通过外部网络连接 `mysql` 与 `redis` 服务。
+
+### 日志与更新
+
+```bash
+docker compose \
+  -p docpilot-dev \
+  -f docker-compose.dev.yml \
+  logs -f backend
+```
+
+Python/React 源码的普通修改会因源代码挂载和 `--reload` 自动生效。修改 `requirements.txt`、`Dockerfile`、`package.json`、`package-lock.json` 或 `docker-compose.dev.yml` 后，重新执行上述 `up -d --build` 命令。
+
+### SSH 隧道
+
+```bash
+ssh \
+  -L 5173:127.0.0.1:5173 \
+  -L 8000:127.0.0.1:8000 \
+  warren@服务器公网IP
+```
+
+本地浏览器访问 `http://localhost:5173` 和 `http://localhost:8000/docs`。不要向公网开放 3306、6379、5173 或 8000 端口。
 
 ---
 

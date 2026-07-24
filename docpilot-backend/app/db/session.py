@@ -6,9 +6,11 @@ settings = get_settings()
 # 创建异步引擎
 async_engine = create_async_engine(
     settings.database_url,
-    echo=True,  # 打印SQL语句
-    pool_size=10,  # 设置连接池活跃的连接数
-    max_overflow=20,  # 允许额外的连接数
+    echo=settings.sql_echo,
+    pool_size=settings.db_pool_size,
+    max_overflow=settings.db_max_overflow,
+    pool_recycle=settings.db_pool_recycle,
+    pool_pre_ping=settings.db_pool_pre_ping,
 )
 
 

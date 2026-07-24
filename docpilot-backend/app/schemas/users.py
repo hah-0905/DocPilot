@@ -1,10 +1,10 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 
-class UserInfoBase(BaseModel):
+class UserCreateRequest(BaseModel):
     """
     注册请求体
     前端传入的数据
@@ -83,3 +83,32 @@ class UserLogin(BaseModel):
         max_length=128,
         description="密码，至少6位",
     )
+
+
+class UserUpdateRequest(BaseModel):
+    username: Optional[str] = Field(default=None, min_length=3, max_length=64)
+    email: Optional[EmailStr] = None
+    display_name: Optional[str] = Field(default=None, max_length=128)
+
+    @model_validator(mode="after")
+    def has_update(self):
+        if not self.model_fields_set or all(
+            getattr(self, field_name) is None for field_name in self.model_fields_set
+        ):
+            raise ValueError("At least one profile field must be provided")
+        return self
+
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str = Field(min_length=6, max_length=128)
+    new_password: str = Field(min_length=6, max_length=128)
+
+    @model_validator(mode="after")
+    def password_is_changed(self):
+        if self.current_password == self.new_password:
+            raise ValueError("New password must be different from the current password")
+        return self
+
+
+# Backward-compatible import name for code outside the user API.
+UserInfoBase = UserCreateRequest

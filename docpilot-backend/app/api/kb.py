@@ -15,6 +15,8 @@ from app.models.workspaces import Workspace
 from app.services.document_service import DocumentService
 from app.services.rag_service import RagService
 from app.models.documents import Document, DocumentVersion
+from app.core.config import get_settings
+from app.core.storage import path_in_directory
 
 router = APIRouter(prefix="/api/kb", tags=["知识库相关接口"])
 
@@ -172,7 +174,13 @@ async def download_document(
     if not version.storage_uri:
         raise HTTPException(status_code=404, detail="Original file not saved")
 
-    file_path = Path(version.storage_uri)
+    try:
+        file_path = path_in_directory(
+            Path(get_settings().upload_dir),
+            Path(version.storage_uri),
+        )
+    except ValueError:
+        raise HTTPException(status_code=404, detail="File not found") from None
 
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")

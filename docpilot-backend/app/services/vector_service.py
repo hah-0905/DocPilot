@@ -1,7 +1,7 @@
 from dataclasses import dataclass
-from pathlib import Path
-
 import chromadb
+
+from app.core.config import get_settings
 
 
 @dataclass
@@ -15,8 +15,8 @@ class VectorService:
     vector_collection = "docpilot_chunks"
 
     def __init__(self) -> None:
-        persist_dir = Path(__file__).resolve().parents[2] / "chroma_db"
-        self.client = chromadb.PersistentClient(path=str(persist_dir))
+        persist_dir = get_settings().chroma_persist_dir
+        self.client = chromadb.PersistentClient(path=persist_dir)
         self.collection = self.client.get_or_create_collection(
             name=self.vector_collection,
             metadata={"hnsw:space": "cosine"},

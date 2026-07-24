@@ -16,6 +16,8 @@ from app.services.reports.report_sections import ReportSectionsService
 from app.services.reports.report_sources import ReportSourcesService
 
 from app.services.reports.report_exports import ReportExportService
+from app.core.config import get_settings
+from app.core.storage import path_in_directory
 
 
 router = APIRouter(
@@ -249,7 +251,13 @@ async def download_report_export(
         export_id=export_id,
         user_id=current_user.id,
     )
-    file_path = Path(export.storage_uri)
+    try:
+        file_path = path_in_directory(
+            Path(get_settings().export_dir),
+            Path(export.storage_uri),
+        )
+    except ValueError:
+        raise HTTPException(status_code=404, detail="导出文件不存在") from None
 
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(
@@ -285,7 +293,7 @@ async def list_report_exports(
     '''
     获取报告导出列表
     '''
-    task_result = db.execute(
+    task_result = await db.execute(
         select(ReportTask)
         .where(ReportTask.id == task_id)
         .where(ReportTask.user_id == current_user.id)
@@ -298,7 +306,7 @@ async def list_report_exports(
             detail="报告任务不存在",
         )
     
-    result = db.execute(
+    result = await db.execute(
         select(ReportExport)
         .where(ReportExport.task_id == task_id)
         .order_by(ReportExport.created_at.desc())

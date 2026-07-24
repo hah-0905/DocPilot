@@ -6,6 +6,8 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.report import ReportExport, ReportTask
+from app.core.config import get_settings
+from app.core.storage import path_in_directory
 
 
 class ReportExportService:
@@ -49,20 +51,15 @@ class ReportExportService:
                 detail="报告内容为空"
             )
 
-        # 项目根目录/docpilot-backend/exports/user_id/task_id
-        export_dir = (
-            Path(__file__).resolve().parents[3]
-            / "exports"
-            / str(user_id)
-            / str(task_id)
-        )
+        export_root = Path(get_settings().export_dir).expanduser().resolve()
+        export_dir = export_root / str(user_id) / str(task_id)
         export_dir.mkdir(parents=True, exist_ok=True)
 
         safe_title = self._save_file_name(task.title)
         unique_suffix = uuid4().hex[:8]
 
         file_name = f"{safe_title}_{unique_suffix}.md"
-        file_path = export_dir / file_name
+        file_path = path_in_directory(export_root, export_dir / file_name)
 
         file_path.write_text(
             task.result_content,

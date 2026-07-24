@@ -3,13 +3,13 @@ import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-LOG_DIR = Path("logs")
-LOG_DIR.mkdir(exist_ok=True)
-
-LOG_FILE = LOG_DIR / "app.log"
+from app.core.config import get_settings
 
 
 def setup_logging() -> None:
+    log_dir = Path(get_settings().log_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "app.log"
     log_format = (
         "%(asctime)s | %(levelname)s | "
         "%(name)s | %(filename)s:%(lineno)d | %(message)s"
@@ -21,7 +21,7 @@ def setup_logging() -> None:
     console_handler.setFormatter(formatter)
 
     file_handler = RotatingFileHandler(
-        LOG_FILE,
+        log_file,
         maxBytes=10 * 1024 * 1024,
         backupCount=5,  # 最多保留 5 个历史日志文件
         encoding="utf-8",
