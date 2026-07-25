@@ -217,12 +217,18 @@ async def list_document_chunks(
     return ApiResponse(
         message="查询成功",
         data={
-            "document":{
-
+            "document": {
                 "id": document.id,
                 "name": document.title,
                 "type": document.file_ext,
+            
+                # 兼容旧字段
                 "status": document.parse_status,
+            
+                # 新增明确状态
+                "parse_status": document.parse_status,
+                "index_status": document.index_status,
+            
                 "created_at": document.created_at,
             },
             "chunks": [
@@ -258,13 +264,19 @@ async def list_documents(
             "id": file.id,
             "name": file.title,
             "type": file.file_ext,
+            # 保留旧字段，避免前端现有代码报错
             "status": file.parse_status,
+
+            # 新增明确的解析和索引状态
+            "parse_status": file.parse_status,
+            "index_status": file.index_status,
+
             "updated_at": file.updated_at,
             "chunks": await document_service.count_chunks(
                 db,
                 file.id,
                 kb_id=kb_id
-            )
+            ),
         }
         for file in files
     ]

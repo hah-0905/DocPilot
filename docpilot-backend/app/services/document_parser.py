@@ -33,4 +33,6 @@ def parse_document(filename: str, file_bytes: bytes) -> str:
     if lower_name.endswith(".docx"):
         return parse_docx(file_bytes)
 
-    raise ValueError("Unsupported file type. Only pdf, txt, md are supported.")
+    raise ValueError(
+        "Unsupported file type. Only pdf, docx, txt and md are supported."
+    )
