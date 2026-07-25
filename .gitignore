@@ -44,3 +44,6 @@ Thumbs.dbdocpilot-backend/.env
 #export
 docpilot-backend/exports/
 exports/
+
+# Runtime vector database data
+docpilot-backend/chroma_db/
