@@ -10,6 +10,7 @@ from app.api.kb import router as kb_router
 from app.api.chat import router as chat_router
 from app.api.report import router as report_router
 from app.core.logger import setup_logging
+from app.core.redis import (check_redis_connection,close_redis_connection,)
 
 setup_logging()
 
@@ -19,7 +20,14 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+
+    redis_available = await check_redis_connection()
+    if not redis_available:
+        raise RuntimeError("Redis connection failed")
+
     yield
+
+    await close_redis_connection()
 
 
 app = FastAPI(
@@ -52,8 +60,11 @@ router = app.include_router(report_router)
 
 @app.get("/health")
 async def health_check():
+    redis_available = await check_redis_connection()
+
     return {
-        "status": "ok",
+        "status": "ok" if redis_available else "degraded",
         "app_name": settings.app_name,
         "env": settings.app_env,
+        "redis": "ok" if redis_available else "unavailable",
     }
