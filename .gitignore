@@ -47,3 +47,4 @@ exports/
 
 # Runtime vector database data
 docpilot-backend/chroma_db/
+/data/
