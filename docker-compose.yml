@@ -1,0 +1,107 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: docpilot-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?MYSQL_DATABASE is required}
+      MYSQL_USER: ${MYSQL_USER:?MYSQL_USER is required}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "MYSQL_PWD=\"$${MYSQL_PASSWORD}\" mysqladmin ping -h 127.0.0.1 -u\"$${MYSQL_USER}\""
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: docpilot-redis
+    restart: unless-stopped
+
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+
+    command:
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"
+
+    ports:
+      - "6379:6379"
+
+    volumes:
+      - redis_data:/data
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./docpilot-backend
+    container_name: docpilot-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      APP_NAME: docpilot-backend
+      APP_ENV: dev
+      DEBUG: "true"
+    
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+    
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_DB: "0"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY is required}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:?OPENAI_BASE_URL is required}
+      MODEL_NAME: ${MODEL_NAME:?MODEL_NAME is required}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:?EMBEDDING_MODEL is required}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./docpilot-backend:/app
+
+  frontend:
+    image: node:20-alpine
+    container_name: docpilot-frontend
+    restart: unless-stopped
+    working_dir: /app
+    depends_on:
+      - backend
+    environment:
+      VITE_BACKEND_URL: http://backend:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./docpilot-front-end:/app
+      - frontend_node_modules:/app/node_modules
+    command: sh -c "npm ci && npm run dev"
+
+volumes:
+  mysql_data:
+  redis_data:
+  frontend_node_modules:

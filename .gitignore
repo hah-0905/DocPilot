@@ -1,0 +1,99 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+.venv/
+venv/
+env/
+
+# Python tooling / tests
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# =========================
+# Environment / Secrets
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# IDE
+# =========================
+.idea/
+.vscode/
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+
+# =========================
+# Upload / Temporary files
+# =========================
+uploads/
+temp/
+tmp/
+
+# =========================
+# Exported/generated files
+# =========================
+exports/
+
+# =========================
+# Vector databases / indexes
+# =========================
+chroma_db/
+faiss_index/
+milvus_data/
+qdrant_storage/
+
+# =========================
+# Local databases
+# =========================
+*.sqlite
+*.sqlite3
+*.db
+
+# =========================
+# Redis / runtime persistence
+# =========================
+dump.rdb
+*.rdb
+
+# =========================
+# Frontend
+# =========================
+node_modules/
+dist/
+build/
+coverage/
+
+# =========================
+# OS
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Project runtime data
+# =========================
+/data/
+
+# =========================
+# Vite 缓存
+# =========================
+.vite/
+
+*.bak
+*.bak.*
+
+.claude/
