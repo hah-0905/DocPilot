@@ -381,57 +381,8 @@ export default function FileManagementPage({ onNavigate }) {
   const typeOptions = ["all", "PDF", "DOCX", "DOC", "MD", "TXT", "FILE"];
 
   return (
-    <div className="kb-page">
-      <aside className="kb-sidebar">
-        <div className="kb-sidebar__brand">
-          <span className="kb-sidebar__logo" aria-hidden="true"><span /></span>
-          <span className="kb-sidebar__name">DocPilot</span>
-        </div>
-        <button className="kb-sidebar__new-btn" onClick={() => onNavigate("/chat")}><SvgIcon name="plus" size={18} /><span>新建对话</span></button>
-        <nav className="kb-sidebar__nav">
-          <a className="kb-nav-item" href="#" onClick={(event) => { event.preventDefault(); onNavigate("/knowledge-base"); }}>
-            <SvgIcon name="layers" size={18} /><span>知识库</span>
-          </a>
-        </nav>
-        <div className="kb-sidebar__section">
-          <div className="kb-sidebar__divider" />
-          <div className="kb-sidebar__section-title">最近对话</div>
-          {["RAG 架构设计", "合同风险分析", "文档总结"].map((item) => (
-            <a key={item} className="kb-nav-item kb-nav-item--sub" href="#" onClick={(event) => event.preventDefault()}>
-              <SvgIcon name="chat-dot" size={16} /><span>{item}</span>
-            </a>
-          ))}
-        </div>
-        <div className="kb-sidebar__footer">
-          <div className="kb-sidebar__divider" />
-          <a className="kb-nav-item kb-nav-item--active" href="#" onClick={(event) => { event.preventDefault(); onNavigate("/files"); }}>
-            <SvgIcon name="file" size={18} /><span>文件管理</span>
-          </a>
-          <a className="kb-nav-item" href="#" onClick={(event) => { event.preventDefault(); onNavigate("/settings"); }}>
-            <SvgIcon name="settings" size={18} /><span>设置</span>
-          </a>
-        </div>
-      </aside>
-
-      <div className="kb-main">
-        <header className="kb-topbar">
-          <div className="kb-topbar__left">
-            <span className="kb-topbar__label">当前页面：</span>
-            <span className="kb-topbar__value">我上传的文件</span>
-          </div>
-          <div className="kb-topbar__center">
-            <span className="kb-topbar__label">模型：</span>
-            <span className="kb-topbar__value">DeepSeek / GPT</span>
-            <SvgIcon name="chevron-down" size={16} />
-          </div>
-          <div className="kb-topbar__right">
-            <button className="kb-topbar__icon-btn" title="刷新" onClick={fetchFiles}><SvgIcon name="refresh-cw" size={18} /></button>
-            <span className="kb-avatar" />
-            <SvgIcon name="chevron-down" size={16} />
-          </div>
-        </header>
-
-        <div className="fm-content">
+    <div className="fm-page">
+      <div className="fm-content">
           <div className="fm-main">
             <div className="fm-header">
               <span className="fm-header-icon"><SvgIcon name="folder" size={32} /></span>
@@ -601,7 +552,6 @@ export default function FileManagementPage({ onNavigate }) {
               </div>
             </div>
           </div>
-        </div>
       </div>
       <DocumentViewer
         kbId={viewerFile?.kbId}

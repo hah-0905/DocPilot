@@ -484,13 +484,9 @@ export default function KnowledgeBaseDetailPage({ onNavigate }) {
   if (loading) {
     return (
       <div className="kb-detail-page">
-        <aside className="kb-sidebar">{/* sidebar skeleton — sidebar not visible here, but kept for layout */}</aside>
-        <div className="kb-main">
-          <header className="kb-topbar" />
-          <div className="kb-detail-content">
-            <div className="kb-loading">
-              {[1, 2, 3].map((i) => <div key={i} className="kb-skeleton" style={{ height: 100, marginBottom: 16 }} />)}
-            </div>
+        <div className="kb-detail-content">
+          <div className="kb-loading">
+            {[1, 2, 3].map((i) => <div key={i} className="kb-skeleton" style={{ height: 100, marginBottom: 16 }} />)}
           </div>
         </div>
       </div>
@@ -531,74 +527,7 @@ export default function KnowledgeBaseDetailPage({ onNavigate }) {
 
   return (
     <div className="kb-detail-page">
-      {/* ===== Sidebar ===== */}
-      <aside className="kb-sidebar">
-        <div className="kb-sidebar__brand">
-          <span className="kb-sidebar__logo" aria-hidden="true"><span /></span>
-          <span className="kb-sidebar__name">DocPilot</span>
-        </div>
-        <button className="kb-sidebar__new-btn" onClick={() => onNavigate("/chat")}>
-          <SvgIcon name="plus" size={18} />
-          <span>新建对话</span>
-        </button>
-        <nav className="kb-sidebar__nav">
-          <a className="kb-nav-item" href="#" onClick={(e) => { e.preventDefault(); onNavigate("/knowledge-base"); }}>
-            <SvgIcon name="layers" size={18} />
-            <span>知识库</span>
-          </a>
-        </nav>
-        <div className="kb-sidebar__section">
-          <div className="kb-sidebar__divider" />
-          <div className="kb-sidebar__section-title">最近对话</div>
-          <a className="kb-nav-item kb-nav-item--sub" href="#" onClick={(e) => e.preventDefault()}>
-            <SvgIcon name="chat-dot" size={16} />
-            <span>RAG 架构设计</span>
-          </a>
-          <a className="kb-nav-item kb-nav-item--sub" href="#" onClick={(e) => e.preventDefault()}>
-            <SvgIcon name="chat-dot" size={16} />
-            <span>合同风险分析</span>
-          </a>
-          <a className="kb-nav-item kb-nav-item--sub" href="#" onClick={(e) => e.preventDefault()}>
-            <SvgIcon name="chat-dot" size={16} />
-            <span>文档总结</span>
-          </a>
-        </div>
-        <div className="kb-sidebar__footer">
-          <div className="kb-sidebar__divider" />
-          <a className="kb-nav-item" href="#" onClick={(e) => { e.preventDefault(); onNavigate("/files"); }}>
-            <SvgIcon name="file" size={18} />
-            <span>文件管理</span>
-          </a>
-          <a className="kb-nav-item" href="#" onClick={(e) => { e.preventDefault(); onNavigate("/settings"); }}>
-            <SvgIcon name="settings" size={18} />
-            <span>设置</span>
-          </a>
-        </div>
-      </aside>
-
-      {/* ===== Main ===== */}
-      <div className="kb-main">
-        <header className="kb-topbar">
-          <div className="kb-topbar__left">
-            <span className="kb-topbar__label">当前知识库：</span>
-            <span className="kb-topbar__value">{kb.name}</span>
-            <SvgIcon name="chevron-down" size={16} />
-          </div>
-          <div className="kb-topbar__center">
-            <span className="kb-topbar__label">模型：</span>
-            <span className="kb-topbar__value">DeepSeek / GPT</span>
-            <SvgIcon name="chevron-down" size={16} />
-          </div>
-          <div className="kb-topbar__right">
-            <button className="kb-topbar__icon-btn" title="搜索">
-              <SvgIcon name="search" size={20} />
-            </button>
-            <span className="kb-avatar" />
-            <SvgIcon name="chevron-down" size={16} />
-          </div>
-        </header>
-
-        <div className="kb-detail-content">
+      <div className="kb-detail-content">
           {/* ===== Breadcrumb ===== */}
           <div className="kb-detail-breadcrumb">
             <button className="kb-breadcrumb-link" onClick={() => onNavigate("/knowledge-base")}>知识库</button>
@@ -608,8 +537,8 @@ export default function KnowledgeBaseDetailPage({ onNavigate }) {
 
           {/* ===== Header ===== */}
           <div className="kb-detail-header">
-            <div className="kb-detail-header__icon" style={{ background: "linear-gradient(135deg, #60a5fa, #2563eb)" }}>
-              <SvgIcon name="layers" size={28} color="#fff" />
+            <div className="kb-detail-header__icon">
+              <SvgIcon name="layers" size={26} />
             </div>
             <div className="kb-detail-header__info">
               <div className="kb-detail-header__title-row">
@@ -795,7 +724,6 @@ export default function KnowledgeBaseDetailPage({ onNavigate }) {
               )}
             </div>
           </div>
-        </div>
       </div>
 
       <DocumentViewer

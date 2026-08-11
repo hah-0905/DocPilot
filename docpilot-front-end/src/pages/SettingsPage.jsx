@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getStoredAuth } from "../api/auth";
 import {
   getLocalUser,
+  getModelSettingWorkspaces,
   updateProfile,
   saveModelSettings,
   saveRetrievalSettings,
@@ -14,11 +15,52 @@ import {
    TODO: replace with backend data when APIs are available
    =============================================================== */
 const DEFAULT_MODEL_SETTINGS = {
-  defaultModel: "DeepSeek / GPT",
+  modelKey: "deepseek-chat",
   temperature: 0.7,
   maxTokens: 4096,
-  responseLanguage: "简体中文",
+  responseLanguage: "zh-CN",
 };
+
+const MODEL_STORAGE_KEY = "docpilot_model_settings";
+const MODEL_OPTIONS = [
+  { value: "deepseek-chat", label: "DeepSeek Chat" },
+  { value: "deepseek-reasoner", label: "DeepSeek Reasoner" },
+];
+
+const LANGUAGE_OPTIONS = [
+  { value: "zh-CN", label: "简体中文" },
+  { value: "en-US", label: "English" },
+  { value: "auto", label: "跟随用户输入" },
+];
+
+function readModelSettings() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(MODEL_STORAGE_KEY) || "null");
+    if (!stored) return DEFAULT_MODEL_SETTINGS;
+
+    const legacyModelMap = {
+      "DeepSeek / GPT": "deepseek-chat",
+      "DeepSeek-V3": "deepseek-chat",
+    };
+    const legacyLanguageMap = {
+      "简体中文": "zh-CN",
+      English: "en-US",
+      "跟随用户输入": "auto",
+    };
+
+    return {
+      modelKey: stored.modelKey || legacyModelMap[stored.defaultModel] || DEFAULT_MODEL_SETTINGS.modelKey,
+      temperature: Number(stored.temperature ?? DEFAULT_MODEL_SETTINGS.temperature),
+      maxTokens: Number(stored.maxTokens ?? DEFAULT_MODEL_SETTINGS.maxTokens),
+      responseLanguage:
+        legacyLanguageMap[stored.responseLanguage] ||
+        stored.responseLanguage ||
+        DEFAULT_MODEL_SETTINGS.responseLanguage,
+    };
+  } catch {
+    return DEFAULT_MODEL_SETTINGS;
+  }
+}
 
 const DEFAULT_RETRIEVAL_SETTINGS = {
   topK: 10,
@@ -59,20 +101,51 @@ function SvgIcon({ name, size = 20 }) {
    =============================================================== */
 export default function SettingsPage({ onNavigate, onLogout }) {
   // ---- User ----
-  const user = useMemo(() => getLocalUser(), []);
+  const [user, setUser] = useState(() => getLocalUser());
   const displayName = user?.display_name || user?.username || "用户";
   const email = user?.email || "";
   const role = user?.role || "普通用户";
   const joinedAt = user?.created_at ? user.created_at.replace("T", " ").slice(0, 10) : "";
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState({ username: user?.username || "", email: user?.email || "" });
+  const [profileErrors, setProfileErrors] = useState({});
+  const [profileSaving, setProfileSaving] = useState(false);
 
   // ---- Model settings ----
-  const [model, setModel] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem("docpilot_model_settings") || "null") || DEFAULT_MODEL_SETTINGS;
-    } catch { return DEFAULT_MODEL_SETTINGS; }
-  });
+  const [model, setModel] = useState(readModelSettings);
+  const [workspaceId, setWorkspaceId] = useState("");
+  const [workspaces, setWorkspaces] = useState([]);
+  const [workspaceLoading, setWorkspaceLoading] = useState(true);
+  const [workspaceLoadError, setWorkspaceLoadError] = useState("");
   const [modelSaving, setModelSaving] = useState(false);
   const [modelSaved, setModelSaved] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    getModelSettingWorkspaces()
+      .then((items) => {
+        if (!active) return;
+        setWorkspaces(items);
+        const cachedWorkspaceId = Number(localStorage.getItem("docpilot_model_workspace_id"));
+        const cachedWorkspace = items.find((item) => item.id === cachedWorkspaceId);
+        if (cachedWorkspace) {
+          setWorkspaceId(String(cachedWorkspace.id));
+        } else if (items[0]) {
+          setWorkspaceId(String(items[0].id));
+        }
+      })
+      .catch((error) => {
+        if (active) setWorkspaceLoadError(error.message || "工作空间加载失败");
+      })
+      .finally(() => {
+        if (active) setWorkspaceLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // ---- Retrieval settings ----
   const [retrieval, setRetrieval] = useState(() => {
@@ -109,15 +182,22 @@ export default function SettingsPage({ onNavigate, onLogout }) {
 
   // ---- Save model ----
   const handleSaveModel = async () => {
+    const normalizedWorkspaceId = Number(workspaceId);
+    if (!Number.isInteger(normalizedWorkspaceId) || normalizedWorkspaceId <= 0) {
+      showToast("请选择或填写有效的工作空间 ID", "error");
+      return;
+    }
+
     setModelSaving(true);
     setModelSaved(false);
     try {
-      await saveModelSettings(model);
-      localStorage.setItem("docpilot_model_settings", JSON.stringify(model));
-      showToast("模型设置已保存（本地）");
-
+      await saveModelSettings(normalizedWorkspaceId, model);
+      localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(model));
+      localStorage.setItem("docpilot_model_workspace_id", String(normalizedWorkspaceId));
+      showToast("模型设置已保存");
+      setModelSaved(true);
     } catch (err) { showToast(err.message, "error"); }
-    finally { setModelSaving(false); setModelSaved(true); }
+    finally { setModelSaving(false); }
   };
 
   // ---- Save retrieval ----
@@ -175,8 +255,42 @@ export default function SettingsPage({ onNavigate, onLogout }) {
 
   // ---- Edit profile ----
   const handleEditProfile = () => {
-    // TODO: implement profile edit modal when backend API is available
-    showToast("个人资料编辑接口待接入", "error");
+    setProfileForm({ username: user?.username || "", email: user?.email || "" });
+    setProfileErrors({});
+    setIsEditingProfile(true);
+  };
+
+  const handleCancelProfileEdit = () => {
+    setIsEditingProfile(false);
+    setProfileErrors({});
+  };
+
+  const handleSaveProfile = async (event) => {
+    event.preventDefault();
+    const username = profileForm.username.trim();
+    const nextEmail = profileForm.email.trim();
+    const errors = {};
+
+    if (username.length < 3 || username.length > 64) {
+      errors.username = "用户名长度需为 3–64 个字符";
+    }
+    if (!/^\S+@\S+\.\S+$/.test(nextEmail)) {
+      errors.email = "请输入有效的邮箱地址";
+    }
+    setProfileErrors(errors);
+    if (Object.keys(errors).length) return;
+
+    setProfileSaving(true);
+    try {
+      const updatedUser = await updateProfile(user?.id, { username, email: nextEmail });
+      setUser(updatedUser);
+      setIsEditingProfile(false);
+      showToast("个人资料已更新");
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      setProfileSaving(false);
+    }
   };
 
   // ---- Toast ----
@@ -191,42 +305,8 @@ export default function SettingsPage({ onNavigate, onLogout }) {
      Render
      ============================================================ */
   return (
-    <div className="kb-page st-page">
-      {/* Sidebar */}
-      <aside className="kb-sidebar">
-        <div className="kb-sidebar__brand">
-          <span className="kb-sidebar__logo" aria-hidden="true"><span /></span>
-          <span className="kb-sidebar__name">DocPilot</span>
-        </div>
-        <button className="kb-sidebar__new-btn" onClick={() => onNavigate("/chat")}><SvgIcon name="plus" size={18} /><span>新建对话</span></button>
-        <nav className="kb-sidebar__nav">
-          <a className="kb-nav-item" href="#" onClick={(e) => { e.preventDefault(); onNavigate("/knowledge-base"); }}>
-            <SvgIcon name="layers" size={18} /><span>知识库</span>
-          </a>
-        </nav>
-        <div className="kb-sidebar__section">
-          <div className="kb-sidebar__divider" />
-          <div className="kb-sidebar__section-title">最近对话</div>
-          {["RAG 架构设计", "合同风险分析", "文档总结"].map((s) => (
-            <a key={s} className="kb-nav-item kb-nav-item--sub" href="#" onClick={(e) => e.preventDefault()}>
-              <SvgIcon name="chat-dot" size={16} /><span>{s}</span>
-            </a>
-          ))}
-        </div>
-        <div className="kb-sidebar__footer">
-          <div className="kb-sidebar__divider" />
-          <a className="kb-nav-item" href="#" onClick={(e) => { e.preventDefault(); onNavigate("/files"); }}>
-            <SvgIcon name="file" size={18} /><span>文件管理</span>
-          </a>
-          <a className="kb-nav-item kb-nav-item--active" href="#" onClick={(e) => e.preventDefault()}>
-            <SvgIcon name="settings" size={18} /><span>设置</span>
-          </a>
-        </div>
-      </aside>
-
-      {/* Main */}
-      <div className="kb-main">
-        <div className="st-content">
+    <div className="st-page">
+      <div className="st-content">
           <div className="st-header">
             <h1 className="st-header__title">设置</h1>
             <p className="st-header__subtitle">管理账号、模型、检索和报告生成偏好</p>
@@ -240,72 +320,171 @@ export default function SettingsPage({ onNavigate, onLogout }) {
             <div className="st-profile">
               <div className="st-avatar">{displayName[0]?.toUpperCase() || "U"}</div>
               <div className="st-profile__fields">
-                <div className="st-field">
-                  <span className="st-field__label">用户名</span>
-                  <span className="st-field__value">{displayName}</span>
-                </div>
-                <div className="st-field">
-                  <span className="st-field__label">邮箱</span>
-                  <span className="st-field__value">{email}</span>
-                </div>
-                <div className="st-field">
-                  <span className="st-field__label">角色</span>
-                  <span className="st-field__value">{role}</span>
-                </div>
-                <div className="st-field">
-                  <span className="st-field__label">加入时间</span>
-                  <span className="st-field__value">{joinedAt}</span>
-                </div>
+                <div className="st-field"><span className="st-field__label">用户名</span><span className="st-field__value">{displayName}</span></div>
+                <div className="st-field"><span className="st-field__label">邮箱</span><span className="st-field__value">{email}</span></div>
+                <div className="st-field"><span className="st-field__label">角色</span><span className="st-field__value">{role}</span></div>
+                <div className="st-field"><span className="st-field__label">加入时间</span><span className="st-field__value">{joinedAt}</span></div>
               </div>
               <button className="st-btn st-btn--outline" onClick={handleEditProfile}>
                 <SvgIcon name="edit" size={15} />
                 <span>编辑资料</span>
               </button>
             </div>
-          </div>
+
+            {isEditingProfile && (
+              <div
+                className="st-profile-modal"
+                role="presentation"
+                onMouseDown={(event) => {
+                  if (event.target === event.currentTarget && !profileSaving) handleCancelProfileEdit();
+                }}
+              >
+                <div className="st-profile-modal__card" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
+                  <div className="st-profile-modal__header">
+                    <div>
+                      <h3 id="profile-modal-title">编辑个人资料</h3>
+                      <p>更新后会同步到当前登录账号。</p>
+                    </div>
+                    <button className="st-profile-modal__close" type="button" aria-label="关闭" onClick={handleCancelProfileEdit} disabled={profileSaving}>×</button>
+                  </div>
+                  <form className="st-profile-edit" onSubmit={handleSaveProfile}>
+                    <div className="st-form-group">
+                      <label htmlFor="profile-username">用户名</label>
+                      <input
+                        id="profile-username"
+                        className={`st-text-input${profileErrors.username ? " st-text-input--error" : ""}`}
+                        value={profileForm.username}
+                        onChange={(e) => setProfileForm({ ...profileForm, username: e.target.value })}
+                        minLength={3}
+                        maxLength={64}
+                        autoComplete="username"
+                        disabled={profileSaving}
+                      />
+                      {profileErrors.username && <p className="st-field-error">{profileErrors.username}</p>}
+                    </div>
+                    <div className="st-form-group">
+                      <label htmlFor="profile-email">邮箱</label>
+                      <input
+                        id="profile-email"
+                        className={`st-text-input${profileErrors.email ? " st-text-input--error" : ""}`}
+                        type="email"
+                        value={profileForm.email}
+                        onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
+                        autoComplete="email"
+                        disabled={profileSaving}
+                      />
+                      {profileErrors.email && <p className="st-field-error">{profileErrors.email}</p>}
+                    </div>
+                    <div className="st-card-actions">
+                      <button className="st-btn st-btn--outline" type="button" onClick={handleCancelProfileEdit} disabled={profileSaving}>取消</button>
+                      <button className="st-btn st-btn--primary" type="submit" disabled={profileSaving}>
+                        {profileSaving ? "保存中..." : "保存资料"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}          </div>
 
           {/* ===== 2. Model settings ===== */}
           <div className="st-card">
             <h2 className="st-card__title">模型设置</h2>
             <div className="st-form-grid">
               <div className="st-form-group">
-                <label>默认模型</label>
-                <select value={model.defaultModel} onChange={(e) => setModel({ ...model, defaultModel: e.target.value })}>
-                  <option>DeepSeek / GPT</option>
-                  <option>GPT-4o</option>
-                  <option>DeepSeek-V3</option>
-                  <option>Claude 4</option>
+                <label htmlFor="model-workspace">工作空间</label>
+                {workspaces.length > 0 ? (
+                  <select
+                    id="model-workspace"
+                    value={workspaceId}
+                    onChange={(e) => {
+                      setWorkspaceId(e.target.value);
+                      setModelSaved(false);
+                    }}
+                    disabled={workspaceLoading || modelSaving}
+                  >
+                    {workspaces.map((workspace) => (
+                      <option key={workspace.id} value={workspace.id}>{workspace.label}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    id="model-workspace"
+                    className="st-text-input"
+                    type="number"
+                    min="1"
+                    step="1"
+                    inputMode="numeric"
+                    placeholder={workspaceLoading ? "正在识别工作空间..." : "请输入工作空间 ID"}
+                    value={workspaceId}
+                    onChange={(e) => {
+                      setWorkspaceId(e.target.value);
+                      setModelSaved(false);
+                    }}
+                    disabled={workspaceLoading || modelSaving}
+                  />
+                )}
+                {!workspaceLoading && workspaces.length === 0 && (
+                  <p className={`st-control-hint${workspaceLoadError ? " st-control-hint--error" : ""}`}>
+                    {workspaceLoadError || "当前没有可自动识别的工作空间，请填写工作空间 ID。"}
+                  </p>
+                )}
+              </div>
+              <div className="st-form-group">
+                <label htmlFor="model-key">默认模型</label>
+                <select
+                  id="model-key"
+                  value={model.modelKey}
+                  onChange={(e) => {
+                    setModel({ ...model, modelKey: e.target.value });
+                    setModelSaved(false);
+                  }}
+                  disabled={modelSaving}
+                >
+                  {MODEL_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
                 </select>
               </div>
               <div className="st-form-group">
                 <label>Temperature <span className="st-val">{model.temperature}</span></label>
                 <input type="range" min="0" max="2" step="0.1" value={model.temperature}
-                  onChange={(e) => setModel({ ...model, temperature: parseFloat(e.target.value) })} />
+                  onChange={(e) => {
+                    setModel({ ...model, temperature: parseFloat(e.target.value) });
+                    setModelSaved(false);
+                  }}
+                  disabled={modelSaving} />
                 <div className="st-slider-labels"><span>0</span><span>0.5</span><span>1</span><span>1.5</span><span>2</span></div>
               </div>
               <div className="st-form-group">
-                <label>Max Tokens</label>
-                <select value={model.maxTokens} onChange={(e) => setModel({ ...model, maxTokens: parseInt(e.target.value) })}>
+                <label htmlFor="model-max-tokens">Max Tokens</label>
+                <select id="model-max-tokens" value={model.maxTokens} onChange={(e) => {
+                  setModel({ ...model, maxTokens: parseInt(e.target.value, 10) });
+                  setModelSaved(false);
+                }} disabled={modelSaving}>
                   <option value={1024}>1024</option>
                   <option value={2048}>2048</option>
                   <option value={4096}>4096</option>
                   <option value={8192}>8192</option>
+                  <option value={16384}>16384</option>
                 </select>
               </div>
               <div className="st-form-group">
-                <label>回复语言</label>
-                <select value={model.responseLanguage} onChange={(e) => setModel({ ...model, responseLanguage: e.target.value })}>
-                  <option>简体中文</option>
-                  <option>English</option>
-                  <option>跟随用户输入</option>
+                <label htmlFor="model-language">回复语言</label>
+                <select id="model-language" value={model.responseLanguage} onChange={(e) => {
+                  setModel({ ...model, responseLanguage: e.target.value });
+                  setModelSaved(false);
+                }} disabled={modelSaving}>
+                  {LANGUAGE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
                 </select>
               </div>
             </div>
             <div className="st-card-actions">
-              <button className="st-btn st-btn--primary" disabled={modelSaving} onClick={handleSaveModel}>
+              <button className="st-btn st-btn--primary" disabled={modelSaving || workspaceLoading || !workspaceId} onClick={handleSaveModel}>
                 {modelSaving ? "保存中..." : "保存设置"}
               </button>
-              {modelSaved && <span className="st-hint">已保存（本地存储，TODO: 对接后端接口）</span>}
+              {modelSaved && <span className="st-hint">已同步到当前工作空间</span>}
             </div>
           </div>
 
@@ -427,7 +606,6 @@ export default function SettingsPage({ onNavigate, onLogout }) {
           <div style={{ textAlign: "center", padding: "20px 0 40px", fontSize: 12, color: "#94a3b8" }}>
             DocPilot v0.1.0 · 设置数据暂存于本地，待后端设置接口上线后自动迁移
           </div>
-        </div>
       </div>
     </div>
   );

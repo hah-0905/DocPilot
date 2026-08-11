@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createChatCompletion, deleteChatSession, getChatMessages, listChatSessions, streamChatCompletion } from "../api/chat";
+import { createChatCompletion, getChatMessages, listChatSessions, streamChatCompletion } from "../api/chat";
 import { getKnowledgeBases } from "../api/knowledgeBase";
 
 function SvgIcon({ name, size = 20 }) {
@@ -92,6 +92,7 @@ export default function ChatPage({ onNavigate }) {
   const [kbLoading, setKbLoading] = useState(false);
   const [streamMode, setStreamMode] = useState(false);
   const [usedChunks, setUsedChunks] = useState([]);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
   const endRef = useRef(null);
 
   const canSend = input.trim().length > 0 && !sending;
@@ -104,6 +105,10 @@ export default function ChatPage({ onNavigate }) {
     const firstUserMessage = messages.find((message) => message.role === "user");
     return firstUserMessage?.content.slice(0, 18) || "新建对话";
   }, [currentSession, messages]);
+  const hasConversation = useMemo(
+    () => messages.some((message) => message.role === "user"),
+    [messages]
+  );
 
   const refreshChatSessions = async () => {
     setSessionsLoading(true);
@@ -150,11 +155,18 @@ export default function ChatPage({ onNavigate }) {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, sending]);
 
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("docpilot:active-chat-session", {
+      detail: { session_id: sessionId },
+    }));
+  }, [sessionId]);
+
   const startNewChat = () => {
     setSessionId(null);
     setInput("");
     setError("");
     setUsedChunks([]);
+    setSourcesOpen(false);
     setMessages([
       {
         id: "welcome",
@@ -227,22 +239,6 @@ export default function ChatPage({ onNavigate }) {
     window.addEventListener("docpilot:open-chat-session", handleOpenSession);
     return () => window.removeEventListener("docpilot:open-chat-session", handleOpenSession);
   }, [chatSessions]);
-
-  const handleDeleteSession = async (event, session) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    try {
-      await deleteChatSession(session.session_id);
-      setChatSessions((current) => current.filter((item) => String(item.session_id) !== String(session.session_id)));
-      if (String(session.session_id) === String(sessionId)) {
-        startNewChat();
-      }
-      window.dispatchEvent(new CustomEvent("docpilot:chat-sessions-changed"));
-    } catch (err) {
-      setError(err.message || "删除对话失败");
-    }
-  };
 
   const sendMessage = async (nextInput = input) => {
     const text = nextInput.trim();
@@ -358,235 +354,89 @@ export default function ChatPage({ onNavigate }) {
   };
 
   return (
-    <div className="kb-page chat-page">
-      <aside className="kb-sidebar">
-        <div className="kb-sidebar__brand">
-          <span className="kb-sidebar__logo" aria-hidden="true"><span /></span>
-          <span className="kb-sidebar__name">DocPilot</span>
-        </div>
-        <button className="kb-sidebar__new-btn" onClick={startNewChat}>
-          <SvgIcon name="plus" size={18} />
-          <span>新建对话</span>
-        </button>
-        <nav className="kb-sidebar__nav">
-          <a className="kb-nav-item" href="#" onClick={(e) => { e.preventDefault(); onNavigate("/knowledge-base"); }}>
-            <SvgIcon name="layers" size={18} />
-            <span>知识库</span>
-          </a>
-        </nav>
-        <div className="kb-sidebar__section">
-          <div className="kb-sidebar__divider" />
-          <div className="kb-sidebar__section-title">最近对话</div>
-          {sessionsLoading ? (
-            <a className="kb-nav-item kb-nav-item--sub" href="#" onClick={(e) => e.preventDefault()}>
-              <SvgIcon name="chat-dot" size={16} />
-              <span>加载中...</span>
-            </a>
-          ) : chatSessions.length > 0 ? (
-            chatSessions.map((session) => (
-              <div
-                key={session.session_id}
-                className={`kb-nav-item kb-nav-item--sub chat-session-item${String(session.session_id) === String(sessionId) ? " kb-nav-item--active" : ""}`}
-                role="button"
-                tabIndex={0}
-                onClick={(event) => {
-                  event.preventDefault();
-                  openChatSession(session);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    openChatSession(session);
-                  }
-                }}
-              >
-                <SvgIcon name="chat-dot" size={16} />
-                <span className="chat-session-title">{session.title || `对话 ${session.session_id}`}</span>
-                <button
-                  className="chat-session-delete"
-                  type="button"
-                  title="删除对话"
-                  aria-label="删除对话"
-                  onClick={(event) => handleDeleteSession(event, session)}
-                >
-                  <SvgIcon name="trash" size={14} />
+    <div className={`chat-page${hasConversation ? " chat-page--reading" : " chat-page--welcome"}`}>
+      <section className="chat-panel" aria-label={chatTitle}>
+        {!hasConversation ? (
+          <div className="chat-welcome">
+            <span className="chat-welcome__mark"><SvgIcon name="sparkles" size={22} /></span>
+            <h1>今天想处理什么？</h1>
+            <p>询问文档、连接知识库，或把资料整理成一份清晰的报告。</p>
+          </div>
+        ) : (
+          <div className="chat-messages">
+            {messages.filter((message) => message.id !== "welcome").map((message) => (
+              <article key={message.id} className={`chat-message chat-message--${message.role}${message.error ? " chat-message--error" : ""}`}>
+                <div className="chat-message__name">{message.role === "assistant" ? <><SvgIcon name="sparkles" size={15} /> DocPilot</> : "你"}</div>
+                <div className="chat-message__content">{message.content}</div>
+              </article>
+            ))}
+            {sending && (
+              <article className="chat-message chat-message--assistant">
+                <div className="chat-message__name"><SvgIcon name="sparkles" size={15} /> DocPilot</div>
+                <div className="chat-typing"><span /><span /><span /></div>
+              </article>
+            )}
+            {usedChunks.length > 0 && (
+              <button className="chat-sources-trigger" type="button" onClick={() => setSourcesOpen(true)}>
+                Sources <span>· {usedChunks.length}</span>
+              </button>
+            )}
+            <div ref={endRef} />
+          </div>
+        )}
+
+        <div className="chat-composer-zone">
+          {error && <div className="chat-composer__error">{error}</div>}
+          <div className="chat-composer__shell">
+            <textarea
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="询问文档、知识库或生成报告…"
+              rows={2}
+            />
+            <div className="chat-composer__footer">
+              <div className="chat-composer__tools">
+                <select className="chat-kb-select" value={selectedKbId} onChange={(event) => setSelectedKbId(event.target.value)} disabled={kbLoading || knowledgeBases.length === 0} title="选择知识库">
+                  <option value="">{kbLoading ? "知识库加载中" : "不使用知识库"}</option>
+                  {knowledgeBases.map((kb) => <option key={kb.id} value={String(kb.id)}>{kb.name || kb.title || `知识库 ${kb.id}`}</option>)}
+                </select>
+                <button type="button" className={`chat-stream-toggle${streamMode ? " is-active" : ""}`} onClick={() => setStreamMode((current) => !current)} aria-pressed={streamMode}>
+                  <span className="chat-stream-toggle__dot" />流式
                 </button>
               </div>
-            ))
-          ) : (
-            <div className="kb-nav-item kb-nav-item--sub kb-nav-item--active chat-session-item" role="button" tabIndex={0}>
-              <SvgIcon name="chat-dot" size={16} />
-              <span className="chat-session-title">{chatTitle}</span>
-              <button
-                className="chat-session-delete"
-                type="button"
-                title="删除对话"
-                aria-label="删除对话"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  startNewChat();
-                }}
-              >
-                <SvgIcon name="trash" size={14} />
-              </button>
+              <button className="chat-send-btn" type="button" aria-label="发送消息" disabled={!canSend} onClick={() => sendMessage()}><SvgIcon name="send" size={17} /></button>
+            </div>
+          </div>
+          {!hasConversation && (
+            <div className="chat-suggestions">
+              {SUGGESTIONS.slice(0, 3).map((suggestion) => <button key={suggestion} type="button" onClick={() => sendMessage(suggestion)}>{suggestion}</button>)}
             </div>
           )}
+          <p className="chat-composer__hint">DocPilot 可能会出错，请核对重要信息。</p>
         </div>
-        <div className="kb-sidebar__footer">
-          <div className="kb-sidebar__divider" />
-          <a className="kb-nav-item" href="#" onClick={(e) => { e.preventDefault(); onNavigate("/files"); }}>
-            <SvgIcon name="file" size={18} />
-            <span>文件管理</span>
-          </a>
-          <a className="kb-nav-item" href="#" onClick={(e) => { e.preventDefault(); onNavigate("/settings"); }}>
-            <SvgIcon name="settings" size={18} />
-            <span>设置</span>
-          </a>
-        </div>
-      </aside>
+      </section>
 
-      <div className="kb-main">
-        <header className="kb-topbar">
-          <div className="kb-topbar__left">
-            <span className="kb-topbar__label">当前对话：</span>
-            <span className="kb-topbar__value">{chatTitle}</span>
-          </div>
-          <div className="kb-topbar__center">
-            <span className="kb-topbar__label">接口：</span>
-            <span className="kb-topbar__value">/api/chat/completions</span>
-          </div>
-          <div className="kb-topbar__right">
-            <button className="kb-topbar__icon-btn" title="搜索"><SvgIcon name="search" size={20} /></button>
-            <span className="kb-avatar" />
-            <SvgIcon name="chevron-down" size={16} />
-          </div>
-        </header>
-
-        <main className="chat-main">
-          <div className="chat-layout">
-          <section className="chat-panel">
-            <div className="chat-hero">
-              <span className="chat-hero__icon"><SvgIcon name="sparkles" size={24} /></span>
-              <div>
-                <h1>新建对话</h1>
-                <p>围绕知识库问答、文档总结、报告生成开始一次新的协作。</p>
-              </div>
-              <button className="kb-btn kb-btn--outline" onClick={startNewChat}>
-                <SvgIcon name="refresh" size={15} />
-                <span>重置</span>
-              </button>
-            </div>
-
-            <div className="chat-messages">
-              {messages.map((message) => (
-                <div key={message.id} className={`chat-message chat-message--${message.role}${message.error ? " chat-message--error" : ""}`}>
-                  <div className="chat-message__avatar">
-                    {message.role === "assistant" ? <SvgIcon name="sparkles" size={16} /> : <SvgIcon name="user" size={16} />}
-                  </div>
-                  <div className="chat-message__body">
-                    <div className="chat-message__name">{message.role === "assistant" ? "DocPilot" : "你"}</div>
-                    <div className="chat-message__content">{message.content}</div>
-                  </div>
-                </div>
-              ))}
-              {sending && (
-                <div className="chat-message chat-message--assistant">
-                  <div className="chat-message__avatar"><SvgIcon name="sparkles" size={16} /></div>
-                  <div className="chat-message__body">
-                    <div className="chat-message__name">DocPilot</div>
-                    <div className="chat-typing"><span /><span /><span /></div>
-                  </div>
-                </div>
-              )}
-              <div ref={endRef} />
-            </div>
-
-            {messages.length <= 1 && (
-              <div className="chat-suggestions">
-                {SUGGESTIONS.map((suggestion) => (
-                  <button key={suggestion} onClick={() => sendMessage(suggestion)}>
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div className="chat-composer">
-              {error && <div className="chat-composer__error">{error}</div>}
-              <div className="chat-composer__shell">
-                <textarea
-                  value={input}
-                  onChange={(event) => setInput(event.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="输入你的问题，按 Enter 发送，Shift + Enter 换行"
-                  rows={1}
-                />
-                <div className="chat-composer__tools">
-                  <select
-                    className="chat-kb-select"
-                    value={selectedKbId}
-                    onChange={(event) => setSelectedKbId(event.target.value)}
-                    disabled={kbLoading || knowledgeBases.length === 0}
-                    title="选择知识库"
-                  >
-                    <option value="">{kbLoading ? "加载中" : "选择知识库"}</option>
-                    {knowledgeBases.map((kb) => (
-                      <option key={kb.id} value={String(kb.id)}>
-                        {kb.name || kb.title || `知识库 ${kb.id}`}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    className={`chat-stream-toggle${streamMode ? " is-active" : ""}`}
-                    onClick={() => setStreamMode((current) => !current)}
-                    aria-pressed={streamMode}
-                    title="选择流式输出接口"
-                  >
-                    <span className="chat-stream-toggle__dot" />
-                    {streamMode ? "流式" : "普通"}
-                  </button>
-                </div>
-                <button className="chat-send-btn" disabled={!canSend} onClick={() => sendMessage()}>
-                  <SvgIcon name="send" size={18} />
-                </button>
-              </div>
-            </div>
-          </section>
-          <aside className="chat-chunks-panel" aria-label="Used chunks">
-            <div className="chat-chunks-panel__header">
-              <div>
-                <h2>引用切片</h2>
-                <p>本轮回答使用的 chunks</p>
-              </div>
-              <span>{usedChunks.length}</span>
+      {sourcesOpen && (
+        <div className="chat-sources-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSourcesOpen(false); }}>
+          <aside className="chat-sources-drawer" role="dialog" aria-modal="true" aria-labelledby="chat-sources-title">
+            <div className="chat-sources-drawer__header">
+              <div><h2 id="chat-sources-title">来源</h2><p>{usedChunks.length} 个引用切片</p></div>
+              <button type="button" aria-label="关闭来源" onClick={() => setSourcesOpen(false)}>×</button>
             </div>
             <div className="chat-chunks-list">
-              {usedChunks.length === 0 ? (
-                <div className="chat-chunks-empty">
-                  <p>暂无引用切片</p>
-                  <span>发送知识库问题后，这里会显示检索到的 chunks。</span>
-                </div>
-              ) : (
-                usedChunks.map((chunk, index) => (
+              {usedChunks.length === 0 ? <div className="chat-chunks-empty"><p>暂无引用</p><span>知识库回答使用的来源会显示在这里。</span></div>
+                : usedChunks.map((chunk, index) => (
                   <article className="chat-chunk-card" key={`${chunk.id}-${index}`}>
-                    <div className="chat-chunk-card__top">
-                      <span>Chunk #{chunk.index}</span>
-                      {chunk.score !== undefined && chunk.score !== null && (
-                        <em>{Number(chunk.score).toFixed(3)}</em>
-                      )}
-                    </div>
+                    <div className="chat-chunk-card__top"><span>Chunk #{chunk.index}</span>{chunk.score !== undefined && chunk.score !== null && <em>Score {Number(chunk.score).toFixed(3)}</em>}</div>
                     <div className="chat-chunk-card__meta">文档 ID：{chunk.documentId}</div>
                     <p>{chunk.content}</p>
                   </article>
-                ))
-              )}
+                ))}
             </div>
           </aside>
-          </div>
-        </main>
-      </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 from datetime import datetime
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.models.kb import KnowledgeBase
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,15 +39,49 @@ class KbService:
                 detail="无权访问该工作空间或默认工作空间不存在"
             )
 
+        normalized_name = name.strip()
+        if not normalized_name:
+            raise HTTPException(status_code=422, detail="知识库名称不能为空")
+
+        existing_kb = await db.scalar(
+            select(KnowledgeBase).where(
+                KnowledgeBase.workspace_id == workspace.id,
+                KnowledgeBase.name == normalized_name,
+            )
+        )
+
+        if existing_kb:
+            if existing_kb.status == "deleted":
+                existing_kb.description = description
+                existing_kb.status = "active"
+                existing_kb.deleted_at = None
+                existing_kb.created_by = user_id
+                db.add(existing_kb)
+                await db.commit()
+                await db.refresh(existing_kb)
+                return existing_kb
+
+            raise HTTPException(
+                status_code=409,
+                detail="当前工作空间中已存在同名知识库"
+            )
+
         kb = KnowledgeBase(
             workspace_id=workspace.id,
-            name=name,
+            name=normalized_name,
             description=description,
             created_by=user_id,
         )
 
         db.add(kb)
-        await db.commit()
+        try:
+            await db.commit()
+        except IntegrityError as exc:
+            await db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="当前工作空间中已存在同名知识库"
+            ) from exc
         await db.refresh(kb)
 
         return kb

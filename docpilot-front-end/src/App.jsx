@@ -89,24 +89,24 @@ export default function App() {
 
   const shellMeta = useMemo(() => {
     if (path === "/chat") {
-      return { title: "智能问答", breadcrumb: "首页 / 智能问答", meta: "接口：/api/chat/completions" };
+      return { title: "对话" };
     }
     if (path === "/report") {
-      return { title: "报告生成", breadcrumb: "首页 / 报告生成", meta: "接口：/api/report/tasks" };
+      return { title: "报告生成" };
     }
     if (path === "/files") {
-      return { title: "我上传的文件", breadcrumb: "首页 / 文件管理", meta: "模型：DeepSeek / GPT" };
+      return { title: "文件管理" };
     }
     if (path === "/settings") {
-      return { title: "设置", breadcrumb: "首页 / 设置", meta: "偏好与账号" };
+      return { title: "设置" };
     }
     if (isKBDetailPath(path)) {
-      return { title: "知识库详情", breadcrumb: "首页 / 知识库 / 详情", meta: "模型：DeepSeek / GPT" };
+      return { title: "知识库详情" };
     }
     if (path === "/dashboard") {
-      return { title: "工作台", breadcrumb: "首页 / 工作台", meta: "DocPilot" };
+      return { title: "工作台" };
     }
-    return { title: "知识库", breadcrumb: "首页 / 知识库", meta: "模型：DeepSeek / GPT" };
+    return { title: "知识库" };
   }, [path]);
 
   const currentPage = useMemo(() => {
@@ -159,10 +159,8 @@ export default function App() {
 
   return (
     <AppShell
-      activePath={isKBDetailPath(path) ? "/knowledge-base" : path}
+      activePath={path}
       title={shellMeta.title}
-      breadcrumb={shellMeta.breadcrumb}
-      meta={shellMeta.meta}
       onNavigate={navigate}
       onLogout={handleLogout}
     >

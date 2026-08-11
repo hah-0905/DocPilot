@@ -89,6 +89,18 @@ export function getStoredAuth() {
   }
 }
 
+/** Update the cached user information without changing the login token. */
+export function updateStoredUser(userData) {
+  const auth = getStoredAuth();
+  if (!auth?.token) {
+    throw new Error("未登录");
+  }
+
+  const user = { ...(auth.user || {}), ...userData };
+  const storage = localStorage.getItem(TOKEN_KEY) ? localStorage : sessionStorage;
+  storage.setItem(USER_KEY, JSON.stringify(user));
+  return user;
+}
 export function clearAuth() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);

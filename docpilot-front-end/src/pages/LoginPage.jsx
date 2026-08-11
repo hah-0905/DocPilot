@@ -4,27 +4,6 @@ import AuthShell from "../components/AuthShell";
 import FormField from "../components/FormField";
 import SocialButton from "../components/SocialButton";
 
-const loginFeatures = [
-  {
-    title: "多知识库管理",
-    description: "集中管理各类文档与知识库，灵活连接，随需使用。",
-    icon: "layers",
-    tone: "blue"
-  },
-  {
-    title: "可溯源问答",
-    description: "基于知识库智能问答，答案可溯源，准确可靠。",
-    icon: "chat",
-    tone: "blue"
-  },
-  {
-    title: "报告生成",
-    description: "一键生成结构化报告，支持自定义模板与导出。",
-    icon: "document",
-    tone: "blue"
-  }
-];
-
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function LoginPage({ onNavigate, onAuthSuccess }) {
@@ -100,9 +79,8 @@ export default function LoginPage({ onNavigate, onAuthSuccess }) {
   return (
     <AuthShell
       variant="login"
-      title="多知识库智能问答与报告生成平台"
-      subtitle="连接您的知识，提升团队效率，让知识驱动决策。"
-      features={loginFeatures}
+      title="与你的知识一起工作"
+      subtitle="登录以继续使用 DocPilot"
     >
       <div className="form-heading">
         <h2>欢迎登录</h2>

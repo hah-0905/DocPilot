@@ -42,8 +42,8 @@ class UserInfoResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    username: str
-    email: EmailStr
+    username: str | None = None
+    email: EmailStr | None = None
     display_name: Optional[str] = None
     avatar_url: Optional[str] = None
     status: str
@@ -83,3 +83,7 @@ class UserLogin(BaseModel):
         max_length=128,
         description="密码，至少6位",
     )
+
+class UserInfoUpdate(BaseModel):
+    username: str | None = None
+    email: EmailStr | None = None

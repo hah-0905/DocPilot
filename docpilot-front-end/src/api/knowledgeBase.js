@@ -103,9 +103,7 @@ export async function uploadKnowledgeBaseFile(kbId, files) {
 }
 
 export async function rebuildKnowledgeBaseIndex(kbId) {
-  console.log(`[TODO] rebuild index for KB ${kbId}`);
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  return { success: true };
+  throw new Error(`知识库 ${kbId} 的重建索引接口暂未开放`);
 }
 
 export async function getKnowledgeBaseStats() {
