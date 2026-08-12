@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createChatCompletion, getChatMessages, listChatSessions, streamChatCompletion } from "../api/chat";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { getChatMessages, listChatSessions, streamChatCompletion } from "../api/chat";
 import { getKnowledgeBases } from "../api/knowledgeBase";
 
 function SvgIcon({ name, size = 20 }) {
@@ -25,6 +27,41 @@ function SvgIcon({ name, size = 20 }) {
   );
 }
 
+const MARKDOWN_COMPONENTS = {
+  table: ({ node: _node, ...props }) => (
+    <div className="chat-markdown__table-wrap">
+      <table {...props} />
+    </div>
+  ),
+  a: ({ node: _node, href, children, ...props }) => {
+    const isExternalLink = typeof href === "string" && /^(?:https?:)?\/\//i.test(href);
+    return (
+      <a
+        {...props}
+        href={href}
+        target={isExternalLink ? "_blank" : undefined}
+        rel={isExternalLink ? "noopener noreferrer" : undefined}
+      >
+        {children}
+      </a>
+    );
+  },
+};
+
+function MarkdownMessage({ content }) {
+  return (
+    <div className="chat-message__content chat-markdown">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        skipHtml
+        components={MARKDOWN_COMPONENTS}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
 const WELCOME_MESSAGE = "你好，我是 DocPilot。你可以直接问问题，也可以让我帮你总结文档、梳理报告结构或生成写作草稿。";
 
 const SUGGESTIONS = [
@@ -46,6 +83,7 @@ function toUiMessages(sessionId, messages) {
     id: `${sessionId}-${index}-${message.role}`,
     role: message.role,
     content: message.content,
+    status: "completed",
     chunks: normalizeUsedChunks(message.chunks || message.used_chunks || message.references || message.metadata?.used_chunks || []),
   }));
 }
@@ -53,24 +91,26 @@ function toUiMessages(sessionId, messages) {
 function normalizeUsedChunks(chunks) {
   if (!Array.isArray(chunks)) return [];
   return chunks
-    .map((chunk, index) => ({
-      id: String(chunk.chunk_id ?? chunk.id ?? index + 1),
-      documentId: chunk.document_id ?? chunk.documentId ?? chunk.metadata?.document_id ?? "--",
-      index: chunk.chunk_index ?? chunk.chunk_no ?? chunk.index ?? index + 1,
-      score: chunk.score,
-      content: chunk.content || chunk.text || "",
-    }))
+    .map((chunk, index) => {
+      const rawChunkId = chunk.chunk_id ?? chunk.id;
+      const rawDocumentId = chunk.document_id ?? chunk.documentId ?? chunk.metadata?.document_id;
+      return {
+        id: rawChunkId === undefined || rawChunkId === null || rawChunkId === ""
+          ? String(index + 1)
+          : String(rawChunkId),
+        documentId: rawDocumentId === undefined || rawDocumentId === null || rawDocumentId === ""
+          ? null
+          : String(rawDocumentId),
+        score: chunk.score,
+        content: chunk.content || chunk.text || "",
+      };
+    })
     .filter((chunk) => chunk.content || chunk.id);
 }
 
-function getLatestAssistantChunks(messages) {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message.role === "assistant" && Array.isArray(message.chunks) && message.chunks.length > 0) {
-      return message.chunks;
-    }
-  }
-  return [];
+function formatChunkScore(score) {
+  const numericScore = Number(score);
+  return Number.isFinite(numericScore) ? numericScore.toFixed(3) : null;
 }
 
 export default function ChatPage({ onNavigate }) {
@@ -80,6 +120,7 @@ export default function ChatPage({ onNavigate }) {
       id: "welcome",
       role: "assistant",
       content: WELCOME_MESSAGE,
+      status: "completed",
     },
   ]);
   const [input, setInput] = useState("");
@@ -87,13 +128,15 @@ export default function ChatPage({ onNavigate }) {
   const [error, setError] = useState("");
   const [chatSessions, setChatSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionTitleHint, setSessionTitleHint] = useState("");
   const [knowledgeBases, setKnowledgeBases] = useState([]);
   const [selectedKbId, setSelectedKbId] = useState("");
-  const [kbLoading, setKbLoading] = useState(false);
-  const [streamMode, setStreamMode] = useState(false);
-  const [usedChunks, setUsedChunks] = useState([]);
-  const [sourcesOpen, setSourcesOpen] = useState(false);
+  const [kbLoading, setKbLoading] = useState(true);
+  const [kbLoadFailed, setKbLoadFailed] = useState(false);
+  const [sourceMessageId, setSourceMessageId] = useState(null);
+  const [copyFeedback, setCopyFeedback] = useState(null);
   const endRef = useRef(null);
+  const copyFeedbackTimerRef = useRef(null);
 
   const canSend = input.trim().length > 0 && !sending;
   const currentSession = useMemo(
@@ -101,14 +144,21 @@ export default function ChatPage({ onNavigate }) {
     [chatSessions, sessionId]
   );
   const chatTitle = useMemo(() => {
-    if (currentSession?.title) return currentSession.title;
+    if (currentSession?.title?.trim()) return currentSession.title.trim();
+    if (sessionTitleHint) return sessionTitleHint;
     const firstUserMessage = messages.find((message) => message.role === "user");
-    return firstUserMessage?.content.slice(0, 18) || "新建对话";
-  }, [currentSession, messages]);
+    return firstUserMessage?.content.trim().slice(0, 18) || "新建对话";
+  }, [currentSession, messages, sessionTitleHint]);
   const hasConversation = useMemo(
     () => messages.some((message) => message.role === "user"),
     [messages]
   );
+  const sourceMessage = useMemo(
+    () => messages.find((message) => message.id === sourceMessageId),
+    [messages, sourceMessageId]
+  );
+  const sourceChunks = Array.isArray(sourceMessage?.chunks) ? sourceMessage.chunks : [];
+  const sourcesOpen = Boolean(sourceMessage);
 
   const refreshChatSessions = async () => {
     setSessionsLoading(true);
@@ -126,11 +176,18 @@ export default function ChatPage({ onNavigate }) {
     refreshChatSessions();
   }, []);
 
+  useEffect(() => () => {
+    if (copyFeedbackTimerRef.current) {
+      window.clearTimeout(copyFeedbackTimerRef.current);
+    }
+  }, []);
+
   useEffect(() => {
     let ignore = false;
 
     const loadKnowledgeBases = async () => {
       setKbLoading(true);
+      setKbLoadFailed(false);
       try {
         const data = await getKnowledgeBases();
         const list = normalizeKnowledgeBases(data);
@@ -139,7 +196,10 @@ export default function ChatPage({ onNavigate }) {
           setSelectedKbId((current) => current);
         }
       } catch (err) {
-        if (!ignore) setError(err.message || "加载知识库失败");
+        if (!ignore) {
+          setKbLoadFailed(true);
+          setError(err.message || "加载知识库失败");
+        }
       } finally {
         if (!ignore) setKbLoading(false);
       }
@@ -156,22 +216,44 @@ export default function ChatPage({ onNavigate }) {
   }, [messages, sending]);
 
   useEffect(() => {
+    if (!sourcesOpen) return undefined;
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setSourceMessageId(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [sourcesOpen]);
+
+  useEffect(() => {
+    if (sourceMessageId && !sourceMessage) {
+      setSourceMessageId(null);
+    }
+  }, [sourceMessage, sourceMessageId]);
+
+  useEffect(() => {
     window.dispatchEvent(new CustomEvent("docpilot:active-chat-session", {
       detail: { session_id: sessionId },
     }));
   }, [sessionId]);
 
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("docpilot:chat-title-changed", {
+      detail: { title: chatTitle },
+    }));
+  }, [chatTitle]);
+
   const startNewChat = () => {
     setSessionId(null);
+    setSessionTitleHint("");
     setInput("");
     setError("");
-    setUsedChunks([]);
-    setSourcesOpen(false);
+    setSourceMessageId(null);
     setMessages([
       {
         id: "welcome",
         role: "assistant",
         content: "新的对话已开始。把问题、文档目标或报告需求发给我就行。",
+        status: "completed",
       },
     ]);
   };
@@ -194,8 +276,10 @@ export default function ChatPage({ onNavigate }) {
 
   const openChatSession = async (session) => {
     setSessionId(session.session_id);
+    setSessionTitleHint(session.title?.trim() || "");
     setInput("");
     setError("");
+    setSourceMessageId(null);
 
     try {
       const data = await getChatMessages(session.session_id);
@@ -203,16 +287,16 @@ export default function ChatPage({ onNavigate }) {
       const historyUiMessages = toUiMessages(session.session_id, historyMessages);
       setMessages(
         historyMessages.length
-          ? toUiMessages(session.session_id, historyMessages)
+          ? historyUiMessages
           : [
               {
                 id: "empty-history",
                 role: "assistant",
                 content: "这个历史对话还没有消息记录。",
+                status: "completed",
               },
             ]
       );
-      setUsedChunks(getLatestAssistantChunks(historyUiMessages));
     } catch (err) {
       setError(err.message || "加载历史消息失败");
     }
@@ -240,107 +324,120 @@ export default function ChatPage({ onNavigate }) {
     return () => window.removeEventListener("docpilot:open-chat-session", handleOpenSession);
   }, [chatSessions]);
 
+  const handleCopyMessage = async (message) => {
+    if (copyFeedbackTimerRef.current) {
+      window.clearTimeout(copyFeedbackTimerRef.current);
+    }
+
+    let status = "copied";
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard API unavailable");
+      }
+      await navigator.clipboard.writeText(message.content);
+    } catch (_err) {
+      status = "failed";
+    }
+
+    setCopyFeedback({ messageId: message.id, status });
+    copyFeedbackTimerRef.current = window.setTimeout(() => {
+      setCopyFeedback((current) => current?.messageId === message.id ? null : current);
+      copyFeedbackTimerRef.current = null;
+    }, 1600);
+  };
+
   const sendMessage = async (nextInput = input) => {
     const text = nextInput.trim();
     if (!text || sending) return;
 
+    const messageTimestamp = Date.now();
+    const assistantId = `assistant-${messageTimestamp}`;
     const userMessage = {
-      id: `user-${Date.now()}`,
+      id: `user-${messageTimestamp}`,
       role: "user",
       content: text,
     };
+    const assistantMessage = {
+      id: assistantId,
+      role: "assistant",
+      content: "",
+      status: "pending",
+      chunks: [],
+    };
 
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages((prev) => [...prev, userMessage, assistantMessage]);
     setInput("");
     setError("");
-    setUsedChunks([]);
     setSending(true);
 
+    let streamedAnswer = "";
+
     try {
-      if (streamMode) {
-        const assistantId = `assistant-${Date.now()}`;
-        let streamedAnswer = "";
-
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: assistantId,
-            role: "assistant",
-            content: "",
-          },
-        ]);
-
-        await streamChatCompletion({
-          sessionId,
-          message: text,
-          kbId: selectedKbId,
-          onMeta: (meta) => {
-            if (meta?.session_id) {
-              setSessionId(meta.session_id);
-            }
-            const normalizedChunks = normalizeUsedChunks(meta?.used_chunks || meta?.chunks || []);
-            if (normalizedChunks.length > 0) setUsedChunks(normalizedChunks);
-          },
-          onChunk: (chunk, chunks) => {
-            const normalizedChunks = normalizeUsedChunks(chunks);
-            if (normalizedChunks.length > 0) setUsedChunks(normalizedChunks);
-            streamedAnswer += chunk;
-            setMessages((prev) =>
-              prev.map((message) =>
-                message.id === assistantId
-                  ? { ...message, content: streamedAnswer }
-                  : message
-              )
-            );
-          },
-        });
-
-        if (!streamedAnswer.trim()) {
+      await streamChatCompletion({
+        sessionId,
+        message: text,
+        kbId: selectedKbId,
+        onMeta: (meta) => {
+          if (meta?.session_id) {
+            setSessionId(meta.session_id);
+          }
+          const normalizedChunks = normalizeUsedChunks(meta?.used_chunks || meta?.chunks || []);
           setMessages((prev) =>
             prev.map((message) =>
               message.id === assistantId
-                ? { ...message, content: "我没有收到有效回答，请稍后再试。" }
+                ? { ...message, chunks: normalizedChunks }
                 : message
             )
           );
-        }
-        refreshChatSessions();
-        window.dispatchEvent(new CustomEvent("docpilot:chat-sessions-changed"));
-        return;
-      }
-
-      const result = await createChatCompletion({
-        sessionId,
-        message: text,
-        stream: false,
-        kbId: selectedKbId,
-      });
-      if (result?.session_id) {
-        setSessionId(result.session_id);
-      }
-      const normalizedChunks = normalizeUsedChunks(result?.used_chunks || result?.chunks || result?.references || []);
-      setUsedChunks(normalizedChunks);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `assistant-${Date.now()}`,
-          role: "assistant",
-          content: result?.answer || "我没有收到有效回答，请稍后再试。",
         },
-      ]);
+        onChunk: (chunk, chunks) => {
+          const normalizedChunks = normalizeUsedChunks(chunks);
+          streamedAnswer += chunk;
+          setMessages((prev) =>
+            prev.map((message) =>
+              message.id === assistantId
+                ? {
+                    ...message,
+                    content: streamedAnswer,
+                    status: streamedAnswer ? "streaming" : message.status,
+                    chunks: normalizedChunks.length > 0 ? normalizedChunks : message.chunks,
+                  }
+                : message
+            )
+          );
+        },
+      });
+
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === assistantId
+            ? streamedAnswer.trim()
+              ? { ...message, status: "completed" }
+              : {
+                  ...message,
+                  content: "我没有收到有效回答，请稍后再试。",
+                  status: "error",
+                  error: true,
+                }
+            : message
+        )
+      );
       refreshChatSessions();
       window.dispatchEvent(new CustomEvent("docpilot:chat-sessions-changed"));
     } catch (err) {
       setError(err.message || "发送失败");
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `assistant-error-${Date.now()}`,
-          role: "assistant",
-          content: "这次请求没有成功。请检查后端服务和模型配置后再试一次。",
-          error: true,
-        },
-      ]);
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === assistantId
+            ? {
+                ...message,
+                content: "这次请求没有成功。请检查后端服务和模型配置后再试一次。",
+                status: "error",
+                error: true,
+              }
+            : message
+        )
+      );
     } finally {
       setSending(false);
     }
@@ -366,21 +463,48 @@ export default function ChatPage({ onNavigate }) {
           <div className="chat-messages">
             {messages.filter((message) => message.id !== "welcome").map((message) => (
               <article key={message.id} className={`chat-message chat-message--${message.role}${message.error ? " chat-message--error" : ""}`}>
-                <div className="chat-message__name">{message.role === "assistant" ? <><SvgIcon name="sparkles" size={15} /> DocPilot</> : "你"}</div>
-                <div className="chat-message__content">{message.content}</div>
+                {message.role === "assistant" && message.status === "pending" && !message.content
+                  ? <div className="chat-typing" aria-label="DocPilot 正在生成"><span /><span /><span /></div>
+                  : message.role === "assistant"
+                    ? <MarkdownMessage content={message.content} />
+                    : <div className="chat-message__content">{message.content}</div>}
+                {message.role === "assistant"
+                  && message.status === "completed"
+                  && !message.error
+                  && message.id !== "empty-history"
+                  && message.content && (
+                    <div className="chat-message__actions" aria-label="回答操作">
+                      <button
+                        type="button"
+                        className={"chat-message__action" + (
+                          copyFeedback?.messageId === message.id
+                            ? " is-" + copyFeedback.status
+                            : ""
+                        )}
+                        onClick={() => handleCopyMessage(message)}
+                      >
+                        <span aria-live="polite">
+                          {copyFeedback?.messageId === message.id
+                            ? copyFeedback.status === "copied" ? "已复制" : "复制失败"
+                            : "复制"}
+                        </span>
+                      </button>
+                      {Array.isArray(message.chunks) && message.chunks.length > 0 && (
+                        <button
+                          type="button"
+                          className="chat-message__action"
+                          aria-haspopup="dialog"
+                          aria-controls="chat-sources-drawer"
+                          aria-expanded={sourceMessageId === message.id}
+                          onClick={() => setSourceMessageId(message.id)}
+                        >
+                          引用来源 <span>· {message.chunks.length}</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
               </article>
             ))}
-            {sending && (
-              <article className="chat-message chat-message--assistant">
-                <div className="chat-message__name"><SvgIcon name="sparkles" size={15} /> DocPilot</div>
-                <div className="chat-typing"><span /><span /><span /></div>
-              </article>
-            )}
-            {usedChunks.length > 0 && (
-              <button className="chat-sources-trigger" type="button" onClick={() => setSourcesOpen(true)}>
-                Sources <span>· {usedChunks.length}</span>
-              </button>
-            )}
             <div ref={endRef} />
           </div>
         )}
@@ -397,13 +521,21 @@ export default function ChatPage({ onNavigate }) {
             />
             <div className="chat-composer__footer">
               <div className="chat-composer__tools">
-                <select className="chat-kb-select" value={selectedKbId} onChange={(event) => setSelectedKbId(event.target.value)} disabled={kbLoading || knowledgeBases.length === 0} title="选择知识库">
-                  <option value="">{kbLoading ? "知识库加载中" : "不使用知识库"}</option>
-                  {knowledgeBases.map((kb) => <option key={kb.id} value={String(kb.id)}>{kb.name || kb.title || `知识库 ${kb.id}`}</option>)}
-                </select>
-                <button type="button" className={`chat-stream-toggle${streamMode ? " is-active" : ""}`} onClick={() => setStreamMode((current) => !current)} aria-pressed={streamMode}>
-                  <span className="chat-stream-toggle__dot" />流式
-                </button>
+                {kbLoading ? (
+                  <span className="chat-kb-status">知识库加载中</span>
+                ) : kbLoadFailed ? (
+                  <span className="chat-kb-status chat-kb-status--error">知识库加载失败</span>
+                ) : knowledgeBases.length === 0 ? (
+                  <div className="chat-kb-empty-state">
+                    <span>未使用知识库</span>
+                    <button type="button" onClick={() => onNavigate("/knowledge-base")}>创建知识库</button>
+                  </div>
+                ) : (
+                  <select className="chat-kb-select" value={selectedKbId} onChange={(event) => setSelectedKbId(event.target.value)} title="选择知识库">
+                    <option value="">不使用知识库</option>
+                    {knowledgeBases.map((kb) => <option key={kb.id} value={String(kb.id)}>{kb.name || kb.title || `知识库 ${kb.id}`}</option>)}
+                  </select>
+                )}
               </div>
               <button className="chat-send-btn" type="button" aria-label="发送消息" disabled={!canSend} onClick={() => sendMessage()}><SvgIcon name="send" size={17} /></button>
             </div>
@@ -418,21 +550,37 @@ export default function ChatPage({ onNavigate }) {
       </section>
 
       {sourcesOpen && (
-        <div className="chat-sources-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSourcesOpen(false); }}>
-          <aside className="chat-sources-drawer" role="dialog" aria-modal="true" aria-labelledby="chat-sources-title">
+        <div className="chat-sources-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSourceMessageId(null); }}>
+          <aside id="chat-sources-drawer" className="chat-sources-drawer" role="dialog" aria-modal="true" aria-labelledby="chat-sources-title">
             <div className="chat-sources-drawer__header">
-              <div><h2 id="chat-sources-title">来源</h2><p>{usedChunks.length} 个引用切片</p></div>
-              <button type="button" aria-label="关闭来源" onClick={() => setSourcesOpen(false)}>×</button>
+              <div>
+                <h2 id="chat-sources-title">引用来源</h2>
+                <p>本回答使用了 {sourceChunks.length} 条知识库内容</p>
+              </div>
+              <button type="button" aria-label="关闭引用来源" onClick={() => setSourceMessageId(null)}>×</button>
             </div>
             <div className="chat-chunks-list">
-              {usedChunks.length === 0 ? <div className="chat-chunks-empty"><p>暂无引用</p><span>知识库回答使用的来源会显示在这里。</span></div>
-                : usedChunks.map((chunk, index) => (
-                  <article className="chat-chunk-card" key={`${chunk.id}-${index}`}>
-                    <div className="chat-chunk-card__top"><span>Chunk #{chunk.index}</span>{chunk.score !== undefined && chunk.score !== null && <em>Score {Number(chunk.score).toFixed(3)}</em>}</div>
-                    <div className="chat-chunk-card__meta">文档 ID：{chunk.documentId}</div>
-                    <p>{chunk.content}</p>
+              {sourceChunks.length === 0 ? (
+                <div className="chat-chunks-empty">
+                  <p>暂无引用</p>
+                  <span>本回答暂未关联可查看的知识库内容。</span>
+                </div>
+              ) : sourceChunks.map((chunk, index) => {
+                const formattedScore = formatChunkScore(chunk.score);
+                return (
+                  <article className="chat-chunk-card" key={chunk.id + "-" + index}>
+                    <div className="chat-chunk-card__top">
+                      <span>引用 {index + 1}</span>
+                      {formattedScore && <em>相关度：{formattedScore}</em>}
+                    </div>
+                    {chunk.documentId && <div className="chat-chunk-card__meta">文档 ID：{chunk.documentId}</div>}
+                    <div className="chat-chunk-card__content">
+                      <span>引用原文</span>
+                      <p>{chunk.content}</p>
+                    </div>
                   </article>
-                ))}
+                );
+              })}
             </div>
           </aside>
         </div>

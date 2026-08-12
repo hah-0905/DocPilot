@@ -89,7 +89,7 @@ export default function App() {
 
   const shellMeta = useMemo(() => {
     if (path === "/chat") {
-      return { title: "对话" };
+      return { title: "新建对话" };
     }
     if (path === "/report") {
       return { title: "报告生成" };

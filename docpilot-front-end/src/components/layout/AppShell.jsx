@@ -53,7 +53,7 @@ function NavLink({ active, href, icon, onNavigate, children }) {
   );
 }
 
-export function Sidebar({ activePath, onNavigate, onClose }) {
+export function Sidebar({ activePath, onNavigate, onClose, onLogout }) {
   const [kbOpen, setKbOpen] = useState(true);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef(null);
@@ -74,6 +74,12 @@ export function Sidebar({ activePath, onNavigate, onClose }) {
     setAccountMenuOpen(false);
     navigateAndClose(path);
   }, [navigateAndClose]);
+
+  const logoutFromAccountMenu = useCallback(() => {
+    setAccountMenuOpen(false);
+    onClose?.();
+    onLogout();
+  }, [onClose, onLogout]);
 
   const loadKnowledgeBases = useCallback(async () => {
     setKbState({ loading: true, error: "" });
@@ -195,6 +201,7 @@ export function Sidebar({ activePath, onNavigate, onClose }) {
           </div>}
         </section>
 
+
         <section className="app-sidebar__section">
           <div className="app-sidebar__section-title">最近对话</div>
           <div className="app-chat-sublist">
@@ -212,13 +219,16 @@ export function Sidebar({ activePath, onNavigate, onClose }) {
 
       </nav>
 
+      <nav className="app-sidebar__bottom-nav" aria-label="业务导航">
+        <NavLink active={activePath === "/files"} href="/files" icon="file" onNavigate={navigateAndClose}>文件管理</NavLink>
+        <NavLink active={activePath === "/report"} href="/report" icon="report" onNavigate={navigateAndClose}>报告生成</NavLink>
+      </nav>
+
       <div className="app-sidebar__account-menu" ref={accountMenuRef}>
         {accountMenuOpen && (
           <div className="app-sidebar__account-popover" role="menu" aria-label="账户快捷入口">
-            <div className="app-sidebar__account-popover-label">工作区</div>
-            <NavLink active={activePath === "/files"} href="/files" icon="file" onNavigate={navigateFromAccountMenu}>文件管理</NavLink>
-            <NavLink active={activePath === "/report"} href="/report" icon="report" onNavigate={navigateFromAccountMenu}>报告生成</NavLink>
             <NavLink active={activePath === "/settings"} href="/settings" icon="settings" onNavigate={navigateFromAccountMenu}>设置</NavLink>
+            <button type="button" className="app-user-menu__item app-user-menu__item--danger" onClick={logoutFromAccountMenu}><ShellIcon name="log-out" size={16} /><span>退出登录</span></button>
           </div>
         )}
         <button
@@ -237,7 +247,7 @@ export function Sidebar({ activePath, onNavigate, onClose }) {
   );
 }
 
-export function TopBar({ title, onNavigate, onLogout, onOpenMenu }) {
+export function TopBar({ title, showSearch = true, onNavigate, onLogout, onOpenMenu }) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const auth = getStoredAuth();
   const userName = auth?.user?.display_name || auth?.user?.username || auth?.user?.email || "用户";
@@ -260,7 +270,7 @@ export function TopBar({ title, onNavigate, onLogout, onOpenMenu }) {
       <button className="app-topbar__menu-btn" type="button" aria-label="打开导航" onClick={onOpenMenu}><ShellIcon name="menu" size={21} /></button>
       <h1 className="app-topbar__title">{title}</h1>
       <div className="app-topbar__actions">
-        <button className="app-topbar__icon-btn" type="button" aria-label="搜索当前页面" onClick={focusSearch}><ShellIcon name="search" size={18} /></button>
+        {showSearch && <button className="app-topbar__icon-btn" type="button" aria-label="搜索当前页面" onClick={focusSearch}><ShellIcon name="search" size={18} /></button>}
         <div className="app-user-menu">
           <button type="button" className={`app-user-menu__trigger${userMenuOpen ? " app-user-menu__trigger--open" : ""}`} aria-expanded={userMenuOpen} aria-label="打开用户菜单" onClick={(event) => { event.stopPropagation(); setUserMenuOpen((value) => !value); }}>
             <span className="app-avatar">{userName.slice(0, 1).toUpperCase()}</span><ShellIcon name="chevron-down" size={14} />
@@ -278,7 +288,21 @@ export function TopBar({ title, onNavigate, onLogout, onOpenMenu }) {
 
 export default function AppShell({ activePath, title, onNavigate, onLogout, children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [chatTitle, setChatTitle] = useState("新建对话");
   useEffect(() => { setMobileOpen(false); }, [activePath]);
+  useEffect(() => {
+    if (activePath !== "/chat") {
+      setChatTitle("新建对话");
+      return undefined;
+    }
+
+    setChatTitle(title || "新建对话");
+    const handleChatTitleChanged = (event) => {
+      setChatTitle(event.detail?.title?.trim() || "新建对话");
+    };
+    window.addEventListener("docpilot:chat-title-changed", handleChatTitleChanged);
+    return () => window.removeEventListener("docpilot:chat-title-changed", handleChatTitleChanged);
+  }, [activePath, title]);
   useEffect(() => {
     if (!mobileOpen) return undefined;
     const close = (event) => { if (event.key === "Escape") setMobileOpen(false); };
@@ -287,11 +311,11 @@ export default function AppShell({ activePath, title, onNavigate, onLogout, chil
   }, [mobileOpen]);
   return (
     <div className={`app-shell${mobileOpen ? " app-shell--mobile-open" : ""}`}>
-      <Sidebar activePath={activePath} onNavigate={onNavigate} onClose={() => setMobileOpen(false)} />
+      <Sidebar activePath={activePath} onNavigate={onNavigate} onClose={() => setMobileOpen(false)} onLogout={onLogout} />
       <button className="app-shell__scrim" type="button" aria-label="关闭导航" onClick={() => setMobileOpen(false)} />
       <div className="app-main-layout">
-        <TopBar title={title} onNavigate={onNavigate} onLogout={onLogout} onOpenMenu={() => setMobileOpen(true)} />
-        <main className="app-main-scroll">{children}</main>
+        <TopBar title={activePath === "/chat" ? chatTitle : title} showSearch={activePath !== "/chat"} onNavigate={onNavigate} onLogout={onLogout} onOpenMenu={() => setMobileOpen(true)} />
+        <main className={`app-main-scroll${activePath === "/chat" ? " app-main-scroll--chat" : ""}`}>{children}</main>
       </div>
     </div>
   );
