@@ -70,11 +70,42 @@ const DEFAULT_RETRIEVAL_SETTINGS = {
 };
 
 const DEFAULT_REPORT_SETTINGS = {
-  defaultReportType: "综合报告",
-  defaultLength: "中等（约1500字）",
-  citationStyle: "APA",
-  exportFormat: "PDF",
+  defaultReportType: "general",
+  defaultLength: "medium",
+  citationStyle: "apa",
+  exportFormat: "markdown",
 };
+
+function readReportSettings() {
+  try {
+    const stored = JSON.parse(localStorage.getItem("docpilot_report_settings") || "null");
+    if (!stored) return DEFAULT_REPORT_SETTINGS;
+
+    const reportTypeMap = {
+      "综合报告": "general",
+      "学术综述": "academic_review",
+      "项目分析": "project_analysis",
+      "合同分析": "contract_analysis",
+      "自定义": "custom",
+    };
+    const lengthMap = {
+      "简短（约800字）": "short",
+      "中等（约1500字）": "medium",
+      "详细（约3000字）": "long",
+    };
+    const citationMap = { APA: "apa", MLA: "mla", Chicago: "chicago", "GB/T 7714": "gb_t_7714" };
+    const exportMap = { PDF: "pdf", DOCX: "docx", Markdown: "markdown", HTML: "html" };
+
+    return {
+      defaultReportType: reportTypeMap[stored.defaultReportType] || stored.defaultReportType || DEFAULT_REPORT_SETTINGS.defaultReportType,
+      defaultLength: lengthMap[stored.defaultLength] || stored.defaultLength || DEFAULT_REPORT_SETTINGS.defaultLength,
+      citationStyle: citationMap[stored.citationStyle] || stored.citationStyle || DEFAULT_REPORT_SETTINGS.citationStyle,
+      exportFormat: exportMap[stored.exportFormat] || stored.exportFormat || DEFAULT_REPORT_SETTINGS.exportFormat,
+    };
+  } catch {
+    return DEFAULT_REPORT_SETTINGS;
+  }
+}
 
 /* ===== SvgIcon ===== */
 function SvgIcon({ name, size = 20 }) {
@@ -147,6 +178,12 @@ export default function SettingsPage({ onNavigate, onLogout }) {
     };
   }, []);
 
+  useEffect(() => {
+    setModelSaved(false);
+    setRetrievalSaved(false);
+    setReportSaved(false);
+  }, [workspaceId]);
+
   // ---- Retrieval settings ----
   const [retrieval, setRetrieval] = useState(() => {
     try {
@@ -157,11 +194,7 @@ export default function SettingsPage({ onNavigate, onLogout }) {
   const [retrievalSaved, setRetrievalSaved] = useState(false);
 
   // ---- Report settings ----
-  const [report, setReport] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem("docpilot_report_settings") || "null") || DEFAULT_REPORT_SETTINGS;
-    } catch { return DEFAULT_REPORT_SETTINGS; }
-  });
+  const [report, setReport] = useState(readReportSettings);
   const [reportSaving, setReportSaving] = useState(false);
   const [reportSaved, setReportSaved] = useState(false);
 
@@ -205,11 +238,12 @@ export default function SettingsPage({ onNavigate, onLogout }) {
     setRetrievalSaving(true);
     setRetrievalSaved(false);
     try {
-      await saveRetrievalSettings(retrieval);
+      await saveRetrievalSettings(workspaceId, retrieval);
       localStorage.setItem("docpilot_retrieval_settings", JSON.stringify(retrieval));
-      showToast("检索设置已保存（本地）");
+      showToast("检索设置已同步到当前工作空间");
+      setRetrievalSaved(true);
     } catch (err) { showToast(err.message, "error"); }
-    finally { setRetrievalSaving(false); setRetrievalSaved(true); }
+    finally { setRetrievalSaving(false); }
   };
 
   // ---- Save report ----
@@ -217,11 +251,12 @@ export default function SettingsPage({ onNavigate, onLogout }) {
     setReportSaving(true);
     setReportSaved(false);
     try {
-      await saveReportSettings(report);
+      await saveReportSettings(workspaceId, report);
       localStorage.setItem("docpilot_report_settings", JSON.stringify(report));
-      showToast("报告设置已保存（本地）");
+      showToast("报告设置已同步到当前工作空间");
+      setReportSaved(true);
     } catch (err) { showToast(err.message, "error"); }
-    finally { setReportSaving(false); setReportSaved(true); }
+    finally { setReportSaving(false); }
   };
 
   // ---- Change password ----
@@ -526,10 +561,10 @@ export default function SettingsPage({ onNavigate, onLogout }) {
               </div>
             </div>
             <div className="st-card-actions">
-              <button className="st-btn st-btn--primary" disabled={retrievalSaving} onClick={handleSaveRetrieval}>
+              <button className="st-btn st-btn--primary" disabled={retrievalSaving || workspaceLoading || !workspaceId} onClick={handleSaveRetrieval}>
                 {retrievalSaving ? "保存中..." : "保存设置"}
               </button>
-              {retrievalSaved && <span className="st-hint">已保存（本地存储，TODO: 对接后端接口）</span>}
+              {retrievalSaved && <span className="st-hint">已同步到当前工作空间</span>}
             </div>
           </div>
 
@@ -540,33 +575,33 @@ export default function SettingsPage({ onNavigate, onLogout }) {
               <div className="st-form-group">
                 <label>默认报告类型</label>
                 <select value={report.defaultReportType} onChange={(e) => setReport({ ...report, defaultReportType: e.target.value })}>
-                  <option>综合报告</option><option>学术综述</option><option>项目分析</option><option>合同分析</option><option>自定义</option>
+                  <option value="general">综合报告</option><option value="academic_review">学术综述</option><option value="project_analysis">项目分析</option><option value="contract_analysis">合同分析</option><option value="custom">自定义</option>
                 </select>
               </div>
               <div className="st-form-group">
                 <label>默认长度</label>
                 <select value={report.defaultLength} onChange={(e) => setReport({ ...report, defaultLength: e.target.value })}>
-                  <option>简短（约800字）</option><option>中等（约1500字）</option><option>详细（约3000字）</option>
+                  <option value="short">简短（约800字）</option><option value="medium">中等（约1500字）</option><option value="long">详细（约3000字）</option>
                 </select>
               </div>
               <div className="st-form-group">
                 <label>引用格式</label>
                 <select value={report.citationStyle} onChange={(e) => setReport({ ...report, citationStyle: e.target.value })}>
-                  <option>APA</option><option>MLA</option><option>Chicago</option><option>GB/T 7714</option>
+                  <option value="apa">APA</option><option value="mla">MLA</option><option value="chicago">Chicago</option><option value="gb_t_7714">GB/T 7714</option>
                 </select>
               </div>
               <div className="st-form-group">
                 <label>导出格式</label>
                 <select value={report.exportFormat} onChange={(e) => setReport({ ...report, exportFormat: e.target.value })}>
-                  <option>PDF</option><option>DOCX</option><option>Markdown</option><option>HTML</option>
+                  <option value="pdf">PDF</option><option value="docx">DOCX</option><option value="markdown">Markdown</option><option value="html">HTML</option>
                 </select>
               </div>
             </div>
             <div className="st-card-actions">
-              <button className="st-btn st-btn--primary" disabled={reportSaving} onClick={handleSaveReport}>
+              <button className="st-btn st-btn--primary" disabled={reportSaving || workspaceLoading || !workspaceId} onClick={handleSaveReport}>
                 {reportSaving ? "保存中..." : "保存设置"}
               </button>
-              {reportSaved && <span className="st-hint">已保存（本地存储，TODO: 对接后端接口）</span>}
+              {reportSaved && <span className="st-hint">已同步到当前工作空间</span>}
             </div>
           </div>
 

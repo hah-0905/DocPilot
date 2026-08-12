@@ -100,18 +100,42 @@ export async function saveModelSettings(workspaceId, data) {
   });
 }
 
-/** 保存检索设置 */
-export async function saveRetrievalSettings(_data) {
-  // TODO: replace with PUT /api/settings/retrieval
-  console.warn("[TODO] saveRetrievalSettings — backend endpoint not available");
-  throw new Error("检索设置保存接口暂未开放");
+function normalizeWorkspaceId(workspaceId) {
+  const value = Number(workspaceId);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error("请选择有效的工作空间");
+  }
+  return value;
 }
 
-/** 保存报告设置 */
-export async function saveReportSettings(_data) {
-  // TODO: replace with PUT /api/settings/report
-  console.warn("[TODO] saveReportSettings — backend endpoint not available");
-  throw new Error("报告设置保存接口暂未开放");
+/** 保存工作空间检索设置 */
+export async function saveRetrievalSettings(workspaceId, data) {
+  const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+
+  return request(`/api/settings/retrieval/${normalizedWorkspaceId}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      top_k: Number(data.topK),
+      similarity_threshold: Number(data.similarityThreshold),
+      enable_rerank: Boolean(data.enableRerank),
+      show_sources: Boolean(data.showSources),
+    }),
+  });
+}
+
+/** 保存工作空间报告设置 */
+export async function saveReportSettings(workspaceId, data) {
+  const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+
+  return request(`/api/settings/report/${normalizedWorkspaceId}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      report_type: data.defaultReportType,
+      length: data.defaultLength,
+      citation_style: data.citationStyle,
+      export_format: data.exportFormat,
+    }),
+  });
 }
 
 /** 修改密码 */

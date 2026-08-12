@@ -5,7 +5,8 @@ from app.schemas.users import UserInfoUpdate
 from app.services.users_service import get_current_user
 from app.models.users import User
 from app.services.settings_service import SettingsService
-from app.schemas.settings import ModelSettingsUpdate
+from app.schemas.settings import ModelSettingsUpdate, RetrievalSettingsUpdate
+from app.schemas.settings import ReportSettingsUpdate
 
 
 router = APIRouter(prefix="/api/settings", tags=["设置相关接口"])
@@ -54,6 +55,40 @@ async def update_model_settings(
     更新工作空间模型设置
     '''
     return await settingsService.update_model_settings(
+        db=db,
+        user_id=current_user.id,
+        workspace_id=workspace_id,
+        request=request
+    )
+
+@router.put("/retrieval/{workspace_id}")
+async def update_retrieval_settings(
+    workspace_id: int,
+    request: RetrievalSettingsUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    '''
+    更新工作空间检索设置
+    '''
+    return await settingsService.update_retrieval_settings(
+        db=db,
+        user_id=current_user.id,
+        workspace_id=workspace_id,
+        request=request
+    )
+
+@router.put("/report/{workspace_id}")
+async def update_report_settings(
+    workspace_id: int,
+    request: ReportSettingsUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    '''
+    更新工作空间报告设置
+    '''
+    return await settingsService.update_report_settings(
         db=db,
         user_id=current_user.id,
         workspace_id=workspace_id,
