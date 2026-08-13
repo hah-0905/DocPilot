@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class Settings(BaseSettings):
     app_name: str = "docpilot-backend"
     app_env: str = "dev"
@@ -18,6 +19,14 @@ class Settings(BaseSettings):
     redis_port: int = 6379
     redis_db: int = 0
     redis_password: str | None = None
+
+    # 阿里云 OSS
+    oss_access_key_id: str
+    oss_access_key_secret: str
+    oss_endpoint: str
+    oss_region: str = "cn-hangzhou"
+    oss_bucket_name: str
+    
 
     # 文档任务 Redis 缓存
     document_task_active_ttl_seconds: int = 24 * 60 * 60

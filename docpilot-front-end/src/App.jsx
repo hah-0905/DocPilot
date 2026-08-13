@@ -49,6 +49,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const handleUserUpdated = () => setAuth(getStoredAuth());
+    window.addEventListener("docpilot:user-updated", handleUserUpdated);
+    return () => window.removeEventListener("docpilot:user-updated", handleUserUpdated);
+  }, []);
+
+  useEffect(() => {
     const isAuthPage = path === "/login" || path === "/register";
     const isProtectedPage = path === "/knowledge-base" || isKBDetailPath(path) || path === "/dashboard" || path === "/files" || path === "/settings" || path === "/chat" || path === "/report";
 

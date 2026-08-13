@@ -24,6 +24,24 @@ function ShellIcon({ name, size = 20 }) {
   );
 }
 
+function UserAvatar({ user, className = "app-avatar" }) {
+  const userName = user?.display_name || user?.username || user?.email || "\u7528\u6237";
+  const avatarUrl = /^https?:\/\//i.test(user?.avatar_url || "") ? user.avatar_url : "";
+
+  return (
+    <span className={className} aria-label={`${userName} avatar`}>
+      {userName.slice(0, 1).toUpperCase()}
+      {avatarUrl && (
+        <img
+          src={avatarUrl}
+          alt=""
+          onError={(event) => { event.currentTarget.style.display = "none"; }}
+        />
+      )}
+    </span>
+  );
+}
+
 function toList(data) {
   if (Array.isArray(data)) return data;
   if (Array.isArray(data?.items)) return data.items;
@@ -238,7 +256,7 @@ export function Sidebar({ activePath, onNavigate, onClose, onLogout }) {
           aria-expanded={accountMenuOpen}
           onClick={() => setAccountMenuOpen((value) => !value)}
         >
-          <span className="app-avatar">{userName.slice(0, 1).toUpperCase()}</span>
+          <UserAvatar user={auth?.user} />
           <span className="app-sidebar__account-copy"><strong>{userName}</strong><small>个人设置</small></span>
           <span className="app-sidebar__account-chevron"><ShellIcon name="chevron-down" size={14} /></span>
         </button>
@@ -273,7 +291,7 @@ export function TopBar({ title, showSearch = true, onNavigate, onLogout, onOpenM
         {showSearch && <button className="app-topbar__icon-btn" type="button" aria-label="搜索当前页面" onClick={focusSearch}><ShellIcon name="search" size={18} /></button>}
         <div className="app-user-menu">
           <button type="button" className={`app-user-menu__trigger${userMenuOpen ? " app-user-menu__trigger--open" : ""}`} aria-expanded={userMenuOpen} aria-label="打开用户菜单" onClick={(event) => { event.stopPropagation(); setUserMenuOpen((value) => !value); }}>
-            <span className="app-avatar">{userName.slice(0, 1).toUpperCase()}</span><ShellIcon name="chevron-down" size={14} />
+            <UserAvatar user={auth?.user} /><ShellIcon name="chevron-down" size={14} />
           </button>
           {userMenuOpen && <div className="app-user-menu__dropdown">
             <div className="app-user-menu__identity"><strong>{userName}</strong>{auth?.user?.email && <span>{auth.user.email}</span>}</div>

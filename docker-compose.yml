@@ -19,7 +19,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "MYSQL_PWD=\"$${MYSQL_PASSWORD}\" mysqladmin ping -h 127.0.0.1 -u\"$${MYSQL_USER}\""
+          'MYSQL_PWD="$${MYSQL_PASSWORD}" mysqladmin ping -h 127.0.0.1 -u"$${MYSQL_USER}"',
         ]
       interval: 10s
       timeout: 5s
@@ -48,7 +48,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"
+          'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG',
         ]
       interval: 10s
       timeout: 5s
@@ -68,14 +68,20 @@ services:
       APP_NAME: docpilot-backend
       APP_ENV: dev
       DEBUG: "true"
-    
+
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
-    
+
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       REDIS_DB: "0"
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
-    
+
+      OSS_ACCESS_KEY_ID: ${OSS_ACCESS_KEY_ID}
+      OSS_ACCESS_KEY_SECRET: ${OSS_ACCESS_KEY_SECRET}
+      OSS_ENDPOINT: ${OSS_ENDPOINT}
+      OSS_REGION: ${OSS_REGION}
+      OSS_BUCKET_NAME: ${OSS_BUCKET_NAME}
+
       OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY is required}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:?OPENAI_BASE_URL is required}
       MODEL_NAME: ${MODEL_NAME:?MODEL_NAME is required}

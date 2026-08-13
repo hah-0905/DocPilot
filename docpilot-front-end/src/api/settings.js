@@ -10,6 +10,9 @@ function getAuthHeaders() {
 
 async function request(path, options = {}) {
   const headers = { ...getAuthHeaders(), ...(options.headers || {}) };
+  if (options.body instanceof FormData) {
+    delete headers["Content-Type"];
+  }
   const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -58,7 +61,44 @@ export async function updateProfile(userId, data) {
     }),
   });
 
-  return updateStoredUser(user?.user_info || user);
+  const nextUser = user?.user_info || user;
+  const currentUser = getStoredAuth()?.user;
+
+  if (
+    nextUser?.avatar_url &&
+    !/^https?:\/\//i.test(nextUser.avatar_url) &&
+    currentUser?.avatar_key === nextUser.avatar_url &&
+    /^https?:\/\//i.test(currentUser?.avatar_url || "")
+  ) {
+    nextUser.avatar_key = nextUser.avatar_url;
+    nextUser.avatar_url = currentUser.avatar_url;
+  }
+
+  return updateStoredUser(nextUser);
+}
+
+/** Upload and update the current user's avatar. */
+export async function uploadAvatar(file) {
+  if (!(file instanceof File)) {
+    throw new Error("\u8bf7\u9009\u62e9\u5934\u50cf\u6587\u4ef6");
+  }
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const result = await request("/api/settings/avatar", {
+    method: "PUT",
+    body: formData,
+  });
+
+  if (!result?.avatar_url) {
+    throw new Error("\u5934\u50cf\u4e0a\u4f20\u6210\u529f\uff0c\u4f46\u540e\u7aef\u672a\u8fd4\u56de\u8bbf\u95ee\u5730\u5740");
+  }
+
+  return updateStoredUser({
+    avatar_key: result.avatar_key,
+    avatar_url: result.avatar_url,
+  });
 }
 
 /**

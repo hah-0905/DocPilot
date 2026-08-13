@@ -99,6 +99,7 @@ export function updateStoredUser(userData) {
   const user = { ...(auth.user || {}), ...userData };
   const storage = localStorage.getItem(TOKEN_KEY) ? localStorage : sessionStorage;
   storage.setItem(USER_KEY, JSON.stringify(user));
+  window.dispatchEvent(new CustomEvent("docpilot:user-updated", { detail: user }));
   return user;
 }
 export function clearAuth() {

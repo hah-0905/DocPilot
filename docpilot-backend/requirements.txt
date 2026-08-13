@@ -20,3 +20,6 @@ openai
 dashvector
 chromadb
 redis>=5.0.0
+oss2
+Pillow
+python-multipart

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getStoredAuth } from "../api/auth";
 import {
   getLocalUser,
@@ -7,6 +7,7 @@ import {
   saveModelSettings,
   saveRetrievalSettings,
   saveReportSettings,
+  uploadAvatar,
   changePassword,
 } from "../api/settings";
 
@@ -32,6 +33,13 @@ const LANGUAGE_OPTIONS = [
   { value: "en-US", label: "English" },
   { value: "auto", label: "跟随用户输入" },
 ];
+const ALLOWED_AVATAR_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const MAX_AVATAR_SIZE = 2 * 1024 * 1024;
+
+function getDisplayableAvatarUrl(user) {
+  return /^https?:\/\//i.test(user?.avatar_url || "") ? user.avatar_url : "";
+}
+
 
 function readModelSettings() {
   try {
@@ -141,6 +149,15 @@ export default function SettingsPage({ onNavigate, onLogout }) {
   const [profileForm, setProfileForm] = useState({ username: user?.username || "", email: user?.email || "" });
   const [profileErrors, setProfileErrors] = useState({});
   const [profileSaving, setProfileSaving] = useState(false);
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState("");
+  const avatarInputRef = useRef(null);
+  const avatarUrl = avatarPreview || getDisplayableAvatarUrl(user);
+
+  useEffect(() => () => {
+    if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+  }, [avatarPreview]);
+
 
   // ---- Model settings ----
   const [model, setModel] = useState(readModelSettings);
@@ -292,12 +309,39 @@ export default function SettingsPage({ onNavigate, onLogout }) {
   const handleEditProfile = () => {
     setProfileForm({ username: user?.username || "", email: user?.email || "" });
     setProfileErrors({});
+    setAvatarFile(null);
+    setAvatarPreview("");
     setIsEditingProfile(true);
   };
 
   const handleCancelProfileEdit = () => {
     setIsEditingProfile(false);
     setProfileErrors({});
+    setAvatarFile(null);
+    setAvatarPreview("");
+  };
+
+  const handleAvatarChange = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    if (!ALLOWED_AVATAR_TYPES.includes(file.type)) {
+      setAvatarFile(null);
+      setAvatarPreview("");
+      setProfileErrors((current) => ({ ...current, avatar: "\u4ec5\u652f\u6301 JPG\u3001PNG \u6216 WebP \u56fe\u7247" }));
+      return;
+    }
+    if (file.size > MAX_AVATAR_SIZE) {
+      setAvatarFile(null);
+      setAvatarPreview("");
+      setProfileErrors((current) => ({ ...current, avatar: "\u5934\u50cf\u5927\u5c0f\u4e0d\u80fd\u8d85\u8fc7 2MB" }));
+      return;
+    }
+
+    setProfileErrors((current) => ({ ...current, avatar: "" }));
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
   };
 
   const handleSaveProfile = async (event) => {
@@ -317,10 +361,15 @@ export default function SettingsPage({ onNavigate, onLogout }) {
 
     setProfileSaving(true);
     try {
-      const updatedUser = await updateProfile(user?.id, { username, email: nextEmail });
+      let updatedUser = await updateProfile(user?.id, { username, email: nextEmail });
+      if (avatarFile) {
+        updatedUser = await uploadAvatar(avatarFile);
+      }
       setUser(updatedUser);
       setIsEditingProfile(false);
       showToast("个人资料已更新");
+      setAvatarFile(null);
+      setAvatarPreview("");
     } catch (err) {
       showToast(err.message, "error");
     } finally {
@@ -353,7 +402,10 @@ export default function SettingsPage({ onNavigate, onLogout }) {
           <div className="st-card">
             <h2 className="st-card__title">个人信息</h2>
             <div className="st-profile">
-              <div className="st-avatar">{displayName[0]?.toUpperCase() || "U"}</div>
+              <div className="st-avatar">
+                {displayName[0]?.toUpperCase() || "U"}
+                {getDisplayableAvatarUrl(user) && <img src={getDisplayableAvatarUrl(user)} alt="User avatar" onError={(event) => { event.currentTarget.style.display = "none"; }} />}
+              </div>
               <div className="st-profile__fields">
                 <div className="st-field"><span className="st-field__label">用户名</span><span className="st-field__value">{displayName}</span></div>
                 <div className="st-field"><span className="st-field__label">邮箱</span><span className="st-field__value">{email}</span></div>
@@ -383,6 +435,35 @@ export default function SettingsPage({ onNavigate, onLogout }) {
                     <button className="st-profile-modal__close" type="button" aria-label="关闭" onClick={handleCancelProfileEdit} disabled={profileSaving}>×</button>
                   </div>
                   <form className="st-profile-edit" onSubmit={handleSaveProfile}>
+                    <div className="st-avatar-editor">
+                      <div className="st-avatar st-avatar--editor">
+                        {displayName[0]?.toUpperCase() || "U"}
+                        {avatarUrl && <img src={avatarUrl} alt="Avatar preview" />}
+                      </div>
+                      <div className="st-avatar-editor__content">
+                        <strong>{"\u4e2a\u4eba\u5934\u50cf"}</strong>
+                        <p>{"\u652f\u6301 JPG\u3001PNG\u3001WebP\uff0c\u6587\u4ef6\u4e0d\u8d85\u8fc7 2MB\uff1b\u4fdd\u5b58\u65f6\u4e0a\u4f20\u3002"}</p>
+                        <input
+                          ref={avatarInputRef}
+                          className="st-avatar-editor__input"
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          onChange={handleAvatarChange}
+                          disabled={profileSaving}
+                        />
+                        <button
+                          className="st-btn st-btn--outline st-avatar-editor__button"
+                          type="button"
+                          onClick={() => avatarInputRef.current?.click()}
+                          disabled={profileSaving}
+                        >
+                          {avatarFile ? "\u91cd\u65b0\u9009\u62e9" : "\u9009\u62e9\u5934\u50cf"}
+                        </button>
+                        {avatarFile && <span className="st-avatar-editor__filename">{avatarFile.name}</span>}
+                        {profileErrors.avatar && <p className="st-field-error">{profileErrors.avatar}</p>}
+                      </div>
+                    </div>
+
                     <div className="st-form-group">
                       <label htmlFor="profile-username">用户名</label>
                       <input
