@@ -14,38 +14,46 @@ class LLMService:
             api_key=settings.openai_api_key,
             base_url=settings.openai_base_url
         )
-        self.model = settings.model_name
+        self.default_model = settings.model_name
         self.embedding_model = settings.embedding_model
 
     async def chat(
         self,
-        messages: list[dict[str,Any]]
+        messages: list[dict[str, Any]],
+        model: str | None = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
     ) -> str:
         '''
         聊天
         '''
         response = await self.client.chat.completions.create(
-            model=self.model,
+            model=model or self.default_model,
             messages=messages,
-            temperature=0.7,
+            temperature=temperature,
+            max_tokens=max_tokens,
         )
         content = response.choices[0].message.content
         return content or ""
-    
+
     async def stream_chat(
         self,
-        messages: list[dict[str, Any]]
-    ) ->  AsyncGenerator[str, None]:
+        messages: list[dict[str, Any]],
+        model: str | None = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+    ) -> AsyncGenerator[str, None]:
         '''
         流式聊天
         '''
         stream = await self.client.chat.completions.create(
-            model=self.model,
+            model=model or self.default_model,
             messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
             stream=True,
-            temperature=0.7,
         )
-        
+
         async for chunk in stream:
             if not chunk.choices:
                 continue
@@ -53,10 +61,8 @@ class LLMService:
             delta = chunk.choices[0].delta
             content = delta.content
 
-            if content: 
+            if content:
                 yield content
-
-
 
     async def embed_text(
         self,

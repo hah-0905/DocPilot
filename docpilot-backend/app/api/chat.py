@@ -11,6 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.chat import ChatSession
 from app.services.users_service import get_current_user
 from app.core.exceptions import AppException
+from app.services.workspace_settings_service import (
+    workspace_settings_service,
+)
+
+
 
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])

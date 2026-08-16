@@ -12,6 +12,10 @@ from app.models.workspaces import Workspace
 from app.services.llm_service import LLMService
 from app.services.rag_service import RagService
 
+from app.services.workspace_settings_service import (
+    workspace_settings_service,
+)
+
 
 class ChatService:
     def __init__(self) -> None:
@@ -34,10 +38,10 @@ class ChatService:
         return value if value > 0 else None
 
     async def _get_default_workspace(
-            self, 
+            self,
             db: AsyncSession,
             current_user: User,
-            ) -> Workspace:
+    ) -> Workspace:
         result = await db.execute(
             select(Workspace)
             .where(Workspace.status == "active",
@@ -187,13 +191,14 @@ class ChatService:
         content: str,
         latency_ms: int | None = None,
         chunks: list[dict] | None = None,
+        model_name: str | None = None,
     ) -> None:
         db.add(
             ChatMessage(
                 session_id=session_id,
                 role=role,
                 content=content,
-                model_name=self.llm_service.model if role == "assistant" else None,
+                model_name=model_name if role == "assistant" else None,
                 latency_ms=latency_ms,
                 metadata_={"used_chunks": chunks or []
                            } if chunks is not None else None,
@@ -232,6 +237,11 @@ class ChatService:
         history = await self._get_history(db, chat_session.id)
         await self._ensure_owned_knowledge_base(db, user, kb_id)
 
+        model_settings = await workspace_settings_service.get_model_settings(
+            db=db,
+            workspace_id=chat_session.workspace_id,
+        )
+
         # 2. 检索相关 chunks
         retrieved_chunks = []
         if kb_id:
@@ -261,7 +271,12 @@ class ChatService:
         start_time = time.perf_counter()
 
         # 5. 调用大模型
-        answer = await self.llm_service.chat(messages)
+        answer = await self.llm_service.chat(
+            messages=messages,
+            model=model_settings.model_key,
+            temperature=float(model_settings.temperature),
+            max_tokens=model_settings.max_tokens,
+        )
         latency_ms = int((time.perf_counter() - start_time) * 1000)
 
         # 6. 保存用户消息
@@ -280,6 +295,7 @@ class ChatService:
             content=answer,
             latency_ms=latency_ms,
             chunks=used_chunks,
+            model_name=model_settings.model_key,
         )
         await db.commit()
 
@@ -309,6 +325,11 @@ class ChatService:
         chat_session = await self._get_or_create_session(db, user, session_id, message)
         history = await self._get_history(db, chat_session.id)
         await self._ensure_owned_knowledge_base(db, user, kb_id)
+
+        model_settings = await workspace_settings_service.get_model_settings(
+            db=db,
+            workspace_id=chat_session.workspace_id,
+        )
 
         retrieved_chunks = []
         if kb_id:
@@ -341,7 +362,12 @@ class ChatService:
             "used_chunks": used_chunks,
         }
 
-        async for chunk in self.llm_service.stream_chat(messages):
+        async for chunk in self.llm_service.stream_chat(
+            messages=messages,
+            model=model_settings.model_key,
+            temperature=model_settings.temperature,
+            max_tokens=model_settings.max_tokens,
+        ):
             answer_chunks.append(chunk)
             yield chunk
 
@@ -361,6 +387,7 @@ class ChatService:
             content=full_answer,
             latency_ms=latency_ms,
             chunks=used_chunks,
+            model_name=model_settings.model_key,
         )
         await db.commit()
 
