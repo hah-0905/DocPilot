@@ -216,6 +216,48 @@ class ChatService:
         )
         return result.scalar_one_or_none()
 
+    async def _retrieve_chunks(
+        self,
+        db: AsyncSession,
+        workspace_id: int,
+        kb_id: int | None,
+        query: str,
+    ) -> list[dict]:
+        """读取工作区检索设置并执行知识库检索。"""
+
+        if kb_id is None:
+            return []
+
+        retrieval_settings = (
+            await workspace_settings_service.get_retrieval_settings(
+                db=db,
+                workspace_id=workspace_id,
+            )
+        )
+
+        # 兼容没有检索设置记录的旧工作区。
+        if retrieval_settings is None:
+            top_k = 10
+            similarity_threshold = 0.65
+            enable_rerank = True
+        else:
+            top_k = retrieval_settings.top_k
+            similarity_threshold = float(
+                retrieval_settings.similarity_threshold
+            )
+            enable_rerank = bool(
+                retrieval_settings.enable_rerank
+            )
+
+        return await self.rag_service.search(
+            db=db,
+            kb_id=kb_id,
+            query=query,
+            top_k=top_k,
+            similarity_threshold=similarity_threshold,
+            enable_rerank=enable_rerank,
+        )
+
     async def chat(
         self,
         db: AsyncSession,
@@ -224,6 +266,7 @@ class ChatService:
         message: str,
         kb_id: int | None = None,
     ) -> dict:
+        # 获取用户信息
         user = current_user
         if not user:
             raise AppException(
@@ -231,26 +274,41 @@ class ChatService:
                 code=404,
                 status_code=404
             )
+        
+        retrieved_chunks = []
 
-        # 1. 获取历史消息
-        chat_session = await self._get_or_create_session(db, user, session_id, message)
-        history = await self._get_history(db, chat_session.id)
-        await self._ensure_owned_knowledge_base(db, user, kb_id)
+         # 1. 获取或创建聊天会话
+        chat_session = await self._get_or_create_session(
+            db,
+            user,
+            session_id,
+            message,
+        )
 
+        history = await self._get_history(
+            db,
+            chat_session.id,
+        )
+
+        await self._ensure_owned_knowledge_base(
+            db,
+            user,
+            kb_id,
+        )
+
+        # 2. 获取当前工作区的模型设置
         model_settings = await workspace_settings_service.get_model_settings(
             db=db,
             workspace_id=chat_session.workspace_id,
         )
 
-        # 2. 检索相关 chunks
-        retrieved_chunks = []
-        if kb_id:
-            retrieved_chunks = await self.rag_service.search(
-                db,
-                kb_id=kb_id,
-                query=message,
-                top_k=5,
-            )
+        # 3. 根据当前工作区的检索设置执行检索
+        retrieved_chunks = await self._retrieve_chunks(
+            db=db,
+            workspace_id=chat_session.workspace_id,
+            kb_id=kb_id,
+            query=message,
+        )
 
         used_chunks = [
             {
@@ -321,24 +379,39 @@ class ChatService:
                 code=404,
                 status_code=404
             )
+        
+        retrieved_chunks = []
+        
+        
+        chat_session = await self._get_or_create_session(
+            db,
+            user,
+            session_id,
+            message,
+        )
 
-        chat_session = await self._get_or_create_session(db, user, session_id, message)
-        history = await self._get_history(db, chat_session.id)
-        await self._ensure_owned_knowledge_base(db, user, kb_id)
+        history = await self._get_history(
+            db,
+            chat_session.id,
+        )
+
+        await self._ensure_owned_knowledge_base(
+            db,
+            user,
+            kb_id,
+        )
 
         model_settings = await workspace_settings_service.get_model_settings(
             db=db,
             workspace_id=chat_session.workspace_id,
         )
 
-        retrieved_chunks = []
-        if kb_id:
-            retrieved_chunks = await self.rag_service.search(
-                db,
-                kb_id=kb_id,
-                query=message,
-                top_k=5,
-            )
+        retrieved_chunks = await self._retrieve_chunks(
+            db=db,
+            workspace_id=chat_session.workspace_id,
+            kb_id=kb_id,
+            query=message,
+        )
 
         used_chunks = [
             {

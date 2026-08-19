@@ -175,6 +175,9 @@ async def delete_chat_session(
     current_user: str = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    '''
+    删除指定的聊天会话。
+    '''
     deleted = await chat_service.delete_session(db, current_user, session_id)
 
     if not deleted:
