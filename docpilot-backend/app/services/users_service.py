@@ -62,7 +62,8 @@ async def create_user(user_data: UserInfoBase, db: AsyncSession):
     user = User(
         username=user_data.username,
         email=user_data.email,
-        password_hash=hashed_password
+        password_hash=hashed_password,
+        display_name=user_data.display_name,
     )
     db.add(user)
     await db.commit()

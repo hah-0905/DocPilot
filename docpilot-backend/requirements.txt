@@ -12,7 +12,7 @@ python-docx
 python-dotenv
 python-jose[cryptography]
 python-multipart
-sqlalchemy
+sqlalchemy[asyncio]
 uvicorn[standard]
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
