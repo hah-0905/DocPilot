@@ -28,22 +28,23 @@ class DocumentDeleteService:
         kb_id: int,
         document_id: int,
     ) -> bool:
-        await self.query_service.get_owned_knowledge_base(
-            db,
-            user_id,
-            kb_id,
+        document = await self.query_service.get_document(
+            db, user_id=user_id, kb_id=kb_id, document_id=document_id,
+            for_update=True,
         )
+        if document is None:
+            return False
 
+        # Use a locking/current read: an indexing transaction may have completed
+        # while we waited for the document lock, after this transaction's snapshot.
         result = await db.execute(
-            select(ChunkEmbedding.vector_id).where(
+            select(ChunkEmbedding.vector_id).join(
+                DocumentChunk, ChunkEmbedding.chunk_id == DocumentChunk.id,
+            ).where(
                 ChunkEmbedding.kb_id == kb_id,
-                ChunkEmbedding.chunk_id.in_(
-                    select(DocumentChunk.id).where(
-                        DocumentChunk.document_id == document_id,
-                        DocumentChunk.kb_id == kb_id,
-                    )
-                ),
-            )
+                DocumentChunk.document_id == document.id,
+                DocumentChunk.kb_id == kb_id,
+            ).with_for_update()
         )
         vector_ids = list(result.scalars().all())
         if vector_ids:
@@ -59,6 +60,9 @@ class DocumentDeleteService:
         await db.execute(
             update(DocumentVersion).where(
                 DocumentVersion.document_id == document_id,
+                DocumentVersion.document_id.in_(
+                    select(Document.id).where(Document.id == document_id, Document.kb_id == kb_id)
+                ),
             ).values(status="deleted")
         )
         await db.execute(

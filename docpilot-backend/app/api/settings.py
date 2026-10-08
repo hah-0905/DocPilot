@@ -6,7 +6,7 @@ from PIL import Image,ImageOps, UnidentifiedImageError
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
-from app.schemas.users import UserInfoUpdate
+from app.schemas.users import UserInfoResponse, UserInfoUpdate
 from app.services.users_service import get_current_user
 from app.models.users import User
 from app.services.settings_service import SettingsService
@@ -33,7 +33,7 @@ ALLOWED_AVATAR_TYPES = {
 }
 
 
-@router.put("/userInfo/{user_id}")
+@router.put("/userInfo/{user_id}", response_model=UserInfoResponse)
 async def update_user_info(
     user_id: int,
     user_data: UserInfoUpdate,
@@ -52,10 +52,11 @@ async def update_user_info(
     user = await settingsService.update_user_info(
         db,
         user_id,
-        user_data
+        user_data,
+        current_user=current_user,
     )
 
-    return user
+    return UserInfoResponse.model_validate(user)
 
 
 @router.put("/avatar")

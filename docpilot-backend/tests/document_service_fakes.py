@@ -70,7 +70,7 @@ class FakeDatabase:
     async def rollback(self) -> None:
         self.rollbacks += 1
 
-    async def get(self, model: type[Any], _object_id: int) -> Any:
+    async def get(self, model: type[Any], _object_id: int, **kwargs: Any) -> Any:
         if model is Document:
             return self.document
         if model is DocumentVersion:
@@ -131,6 +131,10 @@ class FakeTaskService:
 
     async def mark_failed(self, task_id: str, **kwargs: Any) -> bool:
         self.calls.append(("mark_failed", {"task_id": task_id, **kwargs}))
+        return True
+
+    async def mark_cancelled(self, task_id: str, **kwargs: Any) -> bool:
+        self.calls.append(("mark_cancelled", {"task_id": task_id, **kwargs}))
         return True
 
 

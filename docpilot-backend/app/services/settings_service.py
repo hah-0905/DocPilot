@@ -3,6 +3,7 @@ from fastapi import status
 from app.models.users import User
 from sqlalchemy import select
 from app.schemas.users import UserInfoUpdate
+from app.services import users_service
 from app.schemas.settings import ModelSettingsUpdate, ReportSettingsUpdate, RetrievalSettingsUpdate
 from app.models.workspace_members import WorkspaceMember
 from app.models.workspace_model_settings import WorkspaceModelSettings
@@ -22,31 +23,13 @@ class SettingsService:
             self,
             db,
             user_id: int,
-            user_data: UserInfoUpdate
+            user_data: UserInfoUpdate,
+            *,
+            current_user: User,
     ):
-        '''
-        更新用户信息
-        '''
-        # 查询用户是否存在-> 存在：更新；不存在：报错“用户不存在”
-        result = await db.execute(
-            select(User).where(User.id == user_id)
+        return await users_service.update_user_info(
+            user_id, user_data, db, current_user=current_user
         )
-        user = result.scalar_one_or_none()
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="用户不存在"
-            )
-
-        # 更新用户信息
-        if user_data.email is not None:
-            user.email = user_data.email
-        if user_data.username is not None:
-            user.username = user_data.username
-
-        await db.commit()
-        await db.refresh(user)
-        return user
 
     async def select_workspace_member(
             self,
@@ -226,4 +209,3 @@ class SettingsService:
             await db.rollback()
             raise
         return report_settings
-

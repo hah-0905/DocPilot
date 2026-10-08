@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator, model_validator
 
 
 class UserInfoBase(BaseModel):
@@ -85,5 +85,33 @@ class UserLogin(BaseModel):
     )
 
 class UserInfoUpdate(BaseModel):
-    username: str | None = None
+    """Partial profile update; credentials cannot be changed here."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    username: str | None = Field(default=None, min_length=3, max_length=64)
     email: EmailStr | None = None
+    display_name: str | None = Field(default=None, max_length=128)
+
+    @model_validator(mode="after")
+    def validate_update(self):
+        if not self.model_fields_set:
+            raise ValueError("至少提供一个资料字段")
+        for name in ("username", "email"):
+            if name in self.model_fields_set and getattr(self, name) is None:
+                raise ValueError(f"{name} 不能为 null")
+        return self
+
+
+class PasswordChangeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def reject_bcrypt_truncation(cls, value: str) -> str:
+        if len(value.encode("utf-8")) > 72:
+            raise ValueError("新密码的 UTF-8 编码不能超过 72 字节")
+        return value

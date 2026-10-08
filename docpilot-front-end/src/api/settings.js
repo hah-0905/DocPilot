@@ -34,13 +34,6 @@ async function request(path, options = {}) {
   return payload?.data ?? payload;
 }
 
-/*
- * ===============================================================
- * 设置相关接口 — 后端暂无对应 endpoint
- * TODO: 待后端提供设置/密码修改接口后对接
- * ===============================================================
- */
-
 /** 获取用户信息 — 目前从 localStorage 读取 */
 export function getLocalUser() {
   const auth = getStoredAuth();
@@ -179,8 +172,12 @@ export async function saveReportSettings(workspaceId, data) {
 }
 
 /** 修改密码 */
-export async function changePassword(_data) {
-  // TODO: replace with POST /api/user/change-password
-  console.warn("[TODO] changePassword — backend endpoint not available");
-  throw new Error("修改密码接口暂未开放");
+export async function changePassword(data) {
+  return request("/api/user/change-password", {
+    method: "POST",
+    body: JSON.stringify({
+      current_password: data.currentPassword,
+      new_password: data.newPassword,
+    }),
+  });
 }

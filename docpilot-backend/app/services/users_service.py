@@ -1,18 +1,30 @@
+import asyncio
+import hashlib
+import hmac
+import json
+
 from app.core.redis import get_redis_client
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from app.db.session import get_db
 from app.models.users import User
 from starlette import status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.utils import security
-from app.schemas.users import UserInfoBase, UserLogin
+from app.schemas.users import PasswordChangeRequest, UserInfoBase, UserInfoUpdate, UserLogin
 import uuid
 from app.models.workspaces import Workspace
 from app.models.workspace_members import WorkspaceMember
 
 bearer_scheme = HTTPBearer()
+TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7
+
+
+def _credential_version(password_hash: str) -> str:
+    """Bind sessions to credentials without putting the password hash in Redis."""
+    return hashlib.sha256(password_hash.encode("utf-8")).hexdigest()
 
 
 def require_redis_client():
@@ -97,8 +109,11 @@ async def create_token(email: str, db: AsyncSession):
     redis_client = require_redis_client()
     await redis_client.set(
         f"login:token:{token}",
-        str(user.id),
-        ex=60 * 60 * 24 * 7
+        json.dumps({
+            "user_id": user.id,
+            "credential_version": _credential_version(user.password_hash),
+        }),
+        ex=TOKEN_TTL_SECONDS,
     )
 
     return token
@@ -116,18 +131,28 @@ async def get_current_user(
 
     # 查询 Redis
     redis_client = require_redis_client()
-    user_id = await redis_client.get(redis_key)
+    token_data = await redis_client.get(redis_key)
 
-    if not user_id:
+    if not token_data:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="无效或过期的登录凭证"
         )
 
-    # 滑动续期（重新设置 7 天过期时间）
-    await redis_client.expire(redis_key, 60 * 60 * 24 * 7)
+    try:
+        session = json.loads(token_data)
+        if not isinstance(session, dict):
+            raise ValueError("Legacy or invalid session")
+        user_id = session["user_id"]
+        version = session["credential_version"]
+        if type(user_id) is not int or user_id <= 0 or not isinstance(version, str):
+            raise ValueError("Invalid session fields")
+    except (ValueError, TypeError, KeyError) as exc:
+        # Old ID-only sessions cannot prove which password issued them.
+        # Fail closed instead of upgrading a potentially revoked session.
+        raise HTTPException(status_code=401, detail="登录凭证已失效，请重新登录") from exc
 
-    user = await db.get(User, int(user_id))
+    user = await db.get(User, user_id)
 
     # 查询用户
     if not user:
@@ -135,6 +160,15 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="用户不存在"
         )
+
+    if not hmac.compare_digest(
+        version.encode("utf-8"),
+        _credential_version(user.password_hash).encode("utf-8"),
+    ):
+        raise HTTPException(status_code=401, detail="密码已变更，请重新登录")
+
+    # Only valid sessions receive sliding expiry.
+    await redis_client.expire(redis_key, TOKEN_TTL_SECONDS)
 
     return user
 
@@ -190,9 +224,13 @@ async def create_workspace(user_data, db: AsyncSession):
 
 async def update_user_info(
         user_id: int,
-        user_data: UserInfoBase,
-        db: AsyncSession
+        user_data: UserInfoUpdate,
+        db: AsyncSession,
+        *,
+        current_user: User,
 ):
+    if current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="无权修改该账号")
 
     result = await db.execute(
         select(User).where(
@@ -207,16 +245,48 @@ async def update_user_info(
             detail="用户不存在"
         )
 
-    # 更新用户信息
-    if user_data.email is not None:
-        user.email = user_data.email
-    if user_data.username is not None:
-        user.username = user_data.username
-    if user_data.display_name is not None:
-        user.display_name = user_data.display_name
-    if user_data.password is not None:
-        user.password_hash = security.get_hash_password(user_data.password)
+    for field in ("username", "email", "display_name"):
+        if field in user_data.model_fields_set:
+            setattr(user, field, getattr(user_data, field))
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="用户名或邮箱已被使用") from exc
     await db.refresh(user)
     return user
+
+
+async def change_password(
+    request: PasswordChangeRequest,
+    db: AsyncSession,
+    *,
+    current_user: User,
+) -> None:
+    old_hash = current_user.password_hash
+    if not await asyncio.to_thread(
+        security.verify_password, request.current_password, old_hash
+    ):
+        raise HTTPException(status_code=400, detail="当前密码不正确")
+    if await asyncio.to_thread(security.verify_password, request.new_password, old_hash):
+        raise HTTPException(status_code=422, detail="新密码不能与当前密码相同")
+
+    new_hash = await asyncio.to_thread(security.get_hash_password, request.new_password)
+    # Compare-and-swap prevents a concurrent request verified with an old hash
+    # from overwriting a newer password. Committing invalidates every token
+    # whose credential_version was derived from the old hash.
+    result = await db.execute(
+        update(User)
+        .where(User.id == current_user.id, User.password_hash == old_hash)
+        .values(password_hash=new_hash)
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="密码已变更，请重新登录后重试")
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise

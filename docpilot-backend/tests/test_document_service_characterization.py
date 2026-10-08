@@ -163,6 +163,7 @@ class DocumentServiceCharacterizationTests(
         db = FakeDatabase(
             [
                 FakeScalarResult(scalar=SimpleNamespace(id=7)),
+                FakeScalarResult(scalar=SimpleNamespace(id=10)),
                 FakeScalarResult(scalars=["v1", "v2"]),
             ]
         )

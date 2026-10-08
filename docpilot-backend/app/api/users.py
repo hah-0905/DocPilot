@@ -1,11 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException, security
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.schemas.users import UserAuthResponse, UserInfoBase, UserInfoResponse, UserLogin
+from app.schemas.users import (
+    PasswordChangeRequest, UserAuthResponse, UserInfoBase,
+    UserInfoResponse, UserInfoUpdate, UserLogin,
+)
+from app.models.users import User
 from app.db.session import get_db
 from app.services import users_service as users
 from app.utils.response import ApiResponse
 from starlette import status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import HTTPAuthorizationCredentials
 from app.core.redis import get_redis_client
 from app.services.users_service import bearer_scheme
 
@@ -85,16 +89,29 @@ async def logout(
     await redis_client.delete(f"login:token:{token}")
     return ApiResponse(message="退出成功")
 
-@router.post("/update/{user_id}")
+@router.post("/update/{user_id}", response_model=UserInfoResponse)
 async def update_user_info(
     user_id: int,
-    request: UserInfoBase,
-    db: AsyncSession = Depends(get_db)
+    request: UserInfoUpdate,
+    current_user: User = Depends(users.get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    
+    if current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="无权修改该账号")
     user = await users.update_user_info(
         user_id,
-        request, 
-        db
-        )
-    return user
+        request,
+        db,
+        current_user=current_user,
+    )
+    return UserInfoResponse.model_validate(user)
+
+
+@router.post("/change-password", response_model=ApiResponse)
+async def change_password(
+    request: PasswordChangeRequest,
+    current_user: User = Depends(users.get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await users.change_password(request, db, current_user=current_user)
+    return ApiResponse(message="密码修改成功，所有会话已失效，请重新登录")

@@ -220,7 +220,6 @@ export default function SettingsPage({ onNavigate, onLogout }) {
   const [pwVisible, setPwVisible] = useState({ current: false, newPw: false, confirm: false });
   const [pwErrors, setPwErrors] = useState({});
   const [pwSaving, setPwSaving] = useState(false);
-  const [pwSuccess, setPwSuccess] = useState(false);
 
   // ---- Toast ----
   const [toast, setToast] = useState(null); // { message, type }
@@ -283,18 +282,18 @@ export default function SettingsPage({ onNavigate, onLogout }) {
     if (!pwForm.current) errs.current = "请输入当前密码";
     if (!pwForm.newPw) errs.newPw = "请输入新密码";
     else if (pwForm.newPw.length < 8) errs.newPw = "密码至少 8 位";
+    else if (new TextEncoder().encode(pwForm.newPw).length > 72) errs.newPw = "密码过长，请减少字符数量";
     if (!pwForm.confirm) errs.confirm = "请再次输入新密码";
     else if (pwForm.newPw !== pwForm.confirm) errs.confirm = "两次输入的密码不一致";
     setPwErrors(errs);
     if (Object.keys(errs).length) return;
 
     setPwSaving(true);
-    setPwSuccess(false);
     try {
       await changePassword({ currentPassword: pwForm.current, newPassword: pwForm.newPw, confirmPassword: pwForm.confirm });
       setPwForm({ current: "", newPw: "", confirm: "" });
-      showToast("密码修改成功");
-      setPwSuccess(true);
+      window.alert("密码修改成功，所有会话已失效，请重新登录");
+      await onLogout();
     } catch (err) { showToast(err.message, "error"); }
     finally { setPwSaving(false); }
   };

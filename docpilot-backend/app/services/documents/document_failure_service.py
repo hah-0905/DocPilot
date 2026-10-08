@@ -2,8 +2,8 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.documents import Document, DocumentVersion
 from app.services.document_task_service import DocumentTaskService
+from app.services.documents.document_lifecycle import DocumentUnavailable, lock_current_document
 from app.services.documents.document_chunk_indexer import (
     DocumentProcessingState,
 )
@@ -86,21 +86,7 @@ class DocumentFailureService:
     ) -> None:
         """Persist the same parse/index failure state as the legacy service."""
         try:
-            document = await db.get(Document, document_id)
-            version = await db.get(DocumentVersion, version_id)
-
-            if document is None:
-                logger.error(
-                    "Cannot persist failure status: document_id=%s not found",
-                    document_id,
-                )
-                return
-            if version is None:
-                logger.error(
-                    "Cannot persist failure status: version_id=%s not found",
-                    version_id,
-                )
-                return
+            document, version = await lock_current_document(db, document_id, version_id)
 
             if stage in {"parsing", "splitting"}:
                 document.parse_status = "failed"
@@ -124,6 +110,9 @@ class DocumentFailureService:
                 stage,
             )
 
+        except DocumentUnavailable:
+            await db.rollback()
+            logger.info("Skipping failure status for an unavailable document: document_id=%s", document_id)
         except Exception:
             await db.rollback()
             logger.exception(

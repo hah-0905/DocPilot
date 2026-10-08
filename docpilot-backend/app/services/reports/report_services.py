@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Any
 
+from fastapi import HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,6 +9,7 @@ from app.models.report import ReportSection, ReportTask
 from app.schemas.report import ReportTaskCreate
 from app.services.rag_service import RagService
 from app.services.llm_service import LLMService
+from app.services.kb_service import KbService
 
 
 class ReportService:
@@ -24,17 +26,21 @@ class ReportService:
     ) -> ReportTask:
         """创建报告任务。"""
 
+        kb = await KbService().get_knowledge_base(db, user_id=user_id, kb_id=request.kb_id)
+        if request.workspace_id != kb.workspace_id:
+            raise HTTPException(status_code=422, detail="知识库与工作区不匹配")
+
         task = ReportTask(
             title=request.title,
             user_id=user_id,
-            workspace_id=request.workspace_id,
+            workspace_id=kb.workspace_id,
             report_type=request.report_type,
             instruction=request.instruction,
             model_name=request.model_name,
             status="running",
             started_at=datetime.utcnow(),
             config={
-                "kb_id": request.kb_id,
+                "kb_id": kb.id,
                 "length": request.length,
                 "citation_format": request.citation_format,
                 "progress": 0,
@@ -106,6 +112,11 @@ class ReportService:
         section_requirement: str,
         top_k: int,
     ) -> list[dict]:
+        # Recheck access immediately before retrieval, including direct service calls.
+        kb = await KbService().get_knowledge_base(db, user_id=task.user_id, kb_id=kb_id)
+        if kb.workspace_id != task.workspace_id or kb.id != (task.config or {}).get("kb_id"):
+            raise HTTPException(status_code=422, detail="报告知识库与工作区不匹配")
+
         query_parts = [
             f"报告主题：{task.title}",
             f"报告类型：{task.report_type}",

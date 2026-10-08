@@ -44,6 +44,7 @@ async def create_report_task(
             request=request,
             user_id=current_user.id,
         )
+        kb_id = task.config["kb_id"]
 
         sections_config = await report_service.build_default_sections(
             report_type=request.report_type,
@@ -55,7 +56,7 @@ async def create_report_task(
         for section_config in sections_config:
 
             chunks = await report_service.retrieve_section_chunks(
-                db=db, kb_id=request.kb_id, task=task,
+                db=db, kb_id=kb_id, task=task,
                 section_title=section_config["title"],
                 section_requirement=section_config.get("requirement", ""),
                 top_k=5,
@@ -80,7 +81,7 @@ async def create_report_task(
                 db=db,
                 task_id=task.id,
                 section_id=section.id,
-                kb_id=request.kb_id,
+                kb_id=kb_id,
                 chunks=chunks,
             )
 

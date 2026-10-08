@@ -5,8 +5,8 @@ from typing import Any, AsyncContextManager
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.documents import Document, DocumentVersion
 from app.services.document_task_service import DocumentTaskService
+from app.services.documents.document_lifecycle import DocumentUnavailable, lock_current_document
 from app.services.documents.document_chunk_indexer import (
     DocumentChunkIndexer,
     DocumentProcessingState,
@@ -88,21 +88,9 @@ class DocumentProcessingService:
                     progress=5,
                 )
 
-                document = await db.get(Document, document_id)
-                version = await db.get(DocumentVersion, version_id)
-                if document is None or version is None:
-                    error_message = (
-                        "Document or version not found: "
-                        f"document_id={document_id}, version_id={version_id}"
-                    )
-                    logger.error(error_message)
-                    await self.task_service.mark_failed(
-                        task_id,
-                        stage="parsing",
-                        error_code="DOCUMENT_NOT_FOUND",
-                        error_message=error_message,
-                    )
-                    return
+                document, version = await lock_current_document(
+                    db, document_id, version_id, kb_id=kb_id,
+                )
 
                 document.parse_status = "processing"
                 document.index_status = "not_indexed"
@@ -122,9 +110,6 @@ class DocumentProcessingService:
                         f"{filename}"
                     )
 
-                version.char_count = len(text)
-                version.token_count = None
-
                 state.stage = "splitting"
                 await self.task_service.update_progress(
                     task_id,
@@ -139,6 +124,11 @@ class DocumentProcessingService:
                     )
                 state.total_chunks = len(chunks)
 
+                document, version = await lock_current_document(
+                    db, document_id, version_id, kb_id=kb_id,
+                )
+                version.char_count = len(text)
+                version.token_count = None
                 document.parse_status = "success"
                 document.index_status = "indexing"
                 version.status = "success"
@@ -161,6 +151,11 @@ class DocumentProcessingService:
                     total_chunks=state.total_chunks,
                     processed_chunks=0,
                     failed_chunks=0,
+                )
+                # Hold this lock through all vector writes and the final commit.
+                # Deletion then sees and removes every committed vector/chunk.
+                document, version = await lock_current_document(
+                    db, document_id, version_id, kb_id=kb_id,
                 )
                 await self.chunk_indexer.index_chunks(
                     db=db,
@@ -221,6 +216,12 @@ class DocumentProcessingService:
                     len(state.inserted_vector_ids),
                 )
 
+            except DocumentUnavailable as exc:
+                await db.rollback()
+                await self.task_service.mark_cancelled(
+                    task_id, stage=state.stage, error_message=str(exc),
+                )
+                logger.info("Document processing cancelled: document_id=%s, task_id=%s", document_id, task_id)
             except Exception as exc:
                 logger.exception(
                     "Background document processing failed: filename=%s, "

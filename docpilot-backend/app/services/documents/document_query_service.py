@@ -104,15 +104,18 @@ class DocumentQueryService:
         user_id: int,
         kb_id: int,
         document_id: int,
+        *,
+        for_update: bool = False,
     ) -> Document | None:
         await self.get_owned_knowledge_base(db, user_id, kb_id)
 
-        document = await db.execute(
-            select(Document).where(
-                Document.id == document_id,
-                Document.kb_id == kb_id,
-                Document.deleted_at.is_(None),
-                Document.enabled == True,
-            )
+        statement = select(Document).where(
+            Document.id == document_id,
+            Document.kb_id == kb_id,
+            Document.deleted_at.is_(None),
+            Document.enabled == True,
         )
+        if for_update:
+            statement = statement.with_for_update().execution_options(populate_existing=True)
+        document = await db.execute(statement)
         return document.scalar_one_or_none()

@@ -42,12 +42,17 @@ class DocumentProcessingCharacterizationTests(
         )
         document = SimpleNamespace(
             id=10,
+            kb_id=7,
+            enabled=True,
+            deleted_at=None,
+            current_version_id=20,
             sha256="file-hash",
             parse_status="pending",
             index_status="not_indexed",
         )
         version = SimpleNamespace(
             id=20,
+            document_id=10,
             status="pending",
             error_message=None,
             char_count=None,

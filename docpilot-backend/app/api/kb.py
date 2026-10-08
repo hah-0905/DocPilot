@@ -308,27 +308,29 @@ async def delete_document(
         document_id=document_id
     )
     if not deleted:
-        return ApiResponse(
-            message="删除失败",
-            deleted=False
-        )
+        raise HTTPException(status_code=404, detail="文档不存在")
     return ApiResponse(
-        document_id=document_id,
-        deleted=True
+        data={"document_id": document_id, "deleted": True}
     )
 
 
 @router.post("/knowledge-bases/{kb_id}/chat")
 async def chat(
+    kb_id: int,
     request: RagChatRequest,
-    db: AsyncSession = Depends(get_db)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    '''
-    rag 聊天
-    '''
+    """Answer questions only from the current user's active knowledge base."""
+    if request.kb_id != kb_id:
+        raise HTTPException(status_code=422, detail="知识库 ID 不一致")
+
+    await kb_service.get_knowledge_base(
+        db, user_id=current_user.id, kb_id=kb_id
+    )
     result = await rag_service.rag_chat(
         db,
-        kb_id=request.kb_id,
+        kb_id=kb_id,
         question=request.question,
         top_k=request.top_k
     )

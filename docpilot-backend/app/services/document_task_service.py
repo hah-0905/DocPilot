@@ -275,6 +275,15 @@ class DocumentTaskService:
             completed_at=utc_now_naive(),
         )
 
+    async def mark_cancelled(
+        self, task_id: str, *, stage: str, error_message: str,
+    ) -> bool:
+        return await self.update_task(
+            task_id, status="cancelled", stage=stage,
+            error_code="DOCUMENT_UNAVAILABLE", error_message=error_message[:4000],
+            completed_at=utc_now_naive(),
+        )
+
     async def get_latest_task(
         self,
         db: AsyncSession,
