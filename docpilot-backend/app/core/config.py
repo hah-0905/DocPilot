@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     openai_base_url: str
     model_name: str
     embedding_model: str
+    embedding_base_url: str | None = None
+    embedding_api_key: str | None = None
 
     database_url: str
 

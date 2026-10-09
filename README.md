@@ -150,10 +150,18 @@ MYSQL_PASSWORD=docpilot123456
 
 DATABASE_URL=mysql+aiomysql://docpilot:docpilot123456@mysql:3306/docpilot
 
-OPENAI_API_KEY=your_openai_api_key
+OPENAI_API_KEY=local
+OPENAI_BASE_URL=http://LLM_HOST:8001/v1
+MODEL_NAME=your_llm_model
+
+EMBEDDING_API_KEY=local
+EMBEDDING_BASE_URL=http://EMBEDDING_HOST:8002/v1
+EMBEDDING_MODEL=your_embedding_model
 ```
 
-根据实际情况替换 `OPENAI_API_KEY` 和数据库密码。
+根据实际情况替换模型服务地址、模型名称、API Key 和数据库密码。无需鉴权的本地 OpenAI-compatible 服务可使用 `local` 作为 API Key。
+
+LLM 和 Embedding 可以使用不同的 OpenAI-compatible API 地址。`EMBEDDING_BASE_URL` 未配置或为空时，默认复用 `OPENAI_BASE_URL`；`EMBEDDING_API_KEY` 未配置或为空时，默认复用 `OPENAI_API_KEY`，兼容原有配置。
 
 ### 3. 启动服务
 

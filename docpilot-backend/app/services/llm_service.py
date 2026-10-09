@@ -10,9 +10,13 @@ class LLMService:
     def __init__(self) -> None:
         settings = get_settings()
 
-        self.client = AsyncOpenAI(
+        self.chat_client = AsyncOpenAI(
             api_key=settings.openai_api_key,
             base_url=settings.openai_base_url
+        )
+        self.embedding_client = AsyncOpenAI(
+            api_key=settings.embedding_api_key or settings.openai_api_key,
+            base_url=settings.embedding_base_url or settings.openai_base_url,
         )
         self.default_model = settings.model_name
         self.embedding_model = settings.embedding_model
@@ -27,7 +31,7 @@ class LLMService:
         '''
         聊天
         '''
-        response = await self.client.chat.completions.create(
+        response = await self.chat_client.chat.completions.create(
             model=model or self.default_model,
             messages=messages,
             temperature=temperature,
@@ -46,7 +50,7 @@ class LLMService:
         '''
         流式聊天
         '''
-        stream = await self.client.chat.completions.create(
+        stream = await self.chat_client.chat.completions.create(
             model=model or self.default_model,
             messages=messages,
             temperature=temperature,
@@ -71,7 +75,7 @@ class LLMService:
         '''
         嵌入文本
         '''
-        response = await self.client.embeddings.create(
+        response = await self.embedding_client.embeddings.create(
             model=self.embedding_model,
             input=text,
         )
