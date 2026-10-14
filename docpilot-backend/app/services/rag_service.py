@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.chunk_embeddings import ChunkEmbedding
 from app.models.documents import DocumentChunk
 from app.services.llm_service import LLMService
+from app.services.model_runtime import resolve_model_runtime
 from app.services.rerank_service import rerank_service
 from app.services.vector_service import VectorService
 
@@ -116,6 +117,7 @@ class RagService:
         kb_id: int,
         question: str,
         top_k: int = 5,
+        *, user_id: int, workspace_id: int,
     ) -> dict:
         '''
         RAG 聊天
@@ -151,7 +153,8 @@ class RagService:
                 ),
             },
         ]
-        answer = await self.llm_service.chat(messages)
+        runtime = await resolve_model_runtime(db, user_id, workspace_id)
+        answer = await self.llm_service.chat(messages, runtime=runtime)
 
         return {
             "answer": answer,

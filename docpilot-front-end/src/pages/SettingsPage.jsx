@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import PersonalModelSettings from "../components/PersonalModelSettings";
 import { getStoredAuth } from "../api/auth";
 import {
   getLocalUser,
+  getModelCatalog,
+  getWorkspaceModel,
   getModelSettingWorkspaces,
   updateProfile,
   saveModelSettings,
@@ -16,17 +19,11 @@ import {
    TODO: replace with backend data when APIs are available
    =============================================================== */
 const DEFAULT_MODEL_SETTINGS = {
-  modelKey: "deepseek-chat",
+  modelKey: "",
   temperature: 0.7,
   maxTokens: 4096,
   responseLanguage: "zh-CN",
 };
-
-const MODEL_STORAGE_KEY = "docpilot_model_settings";
-const MODEL_OPTIONS = [
-  { value: "deepseek-chat", label: "DeepSeek Chat" },
-  { value: "deepseek-reasoner", label: "DeepSeek Reasoner" },
-];
 
 const LANGUAGE_OPTIONS = [
   { value: "zh-CN", label: "简体中文" },
@@ -40,35 +37,6 @@ function getDisplayableAvatarUrl(user) {
   return /^https?:\/\//i.test(user?.avatar_url || "") ? user.avatar_url : "";
 }
 
-
-function readModelSettings() {
-  try {
-    const stored = JSON.parse(localStorage.getItem(MODEL_STORAGE_KEY) || "null");
-    if (!stored) return DEFAULT_MODEL_SETTINGS;
-
-    const legacyModelMap = {
-      "DeepSeek / GPT": "deepseek-chat",
-      "DeepSeek-V3": "deepseek-chat",
-    };
-    const legacyLanguageMap = {
-      "简体中文": "zh-CN",
-      English: "en-US",
-      "跟随用户输入": "auto",
-    };
-
-    return {
-      modelKey: stored.modelKey || legacyModelMap[stored.defaultModel] || DEFAULT_MODEL_SETTINGS.modelKey,
-      temperature: Number(stored.temperature ?? DEFAULT_MODEL_SETTINGS.temperature),
-      maxTokens: Number(stored.maxTokens ?? DEFAULT_MODEL_SETTINGS.maxTokens),
-      responseLanguage:
-        legacyLanguageMap[stored.responseLanguage] ||
-        stored.responseLanguage ||
-        DEFAULT_MODEL_SETTINGS.responseLanguage,
-    };
-  } catch {
-    return DEFAULT_MODEL_SETTINGS;
-  }
-}
 
 const DEFAULT_RETRIEVAL_SETTINGS = {
   topK: 10,
@@ -160,13 +128,16 @@ export default function SettingsPage({ onNavigate, onLogout }) {
 
 
   // ---- Model settings ----
-  const [model, setModel] = useState(readModelSettings);
+  const [model, setModel] = useState(DEFAULT_MODEL_SETTINGS);
   const [workspaceId, setWorkspaceId] = useState("");
   const [workspaces, setWorkspaces] = useState([]);
   const [workspaceLoading, setWorkspaceLoading] = useState(true);
   const [workspaceLoadError, setWorkspaceLoadError] = useState("");
   const [modelSaving, setModelSaving] = useState(false);
   const [modelSaved, setModelSaved] = useState(false);
+  const [modelOptions, setModelOptions] = useState([]);
+  const [modelLoading, setModelLoading] = useState(true);
+  const [modelLoadError, setModelLoadError] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -229,6 +200,25 @@ export default function SettingsPage({ onNavigate, onLogout }) {
     setTimeout(() => setToast(null), 3000);
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    setModelLoading(true);
+    setModelLoadError("");
+    (async () => {
+      try {
+        const directory = await getModelCatalog();
+        const current = workspaceId ? await getWorkspaceModel(workspaceId) : {
+          model_key: directory.platform_default_model, temperature: 0.7, max_tokens: 4096, response_language: "zh-CN",
+        };
+        if (!active) return;
+        setModelOptions(directory.platform_models);
+        setModel({ modelKey: current.model_key, temperature: current.temperature, maxTokens: current.max_tokens, responseLanguage: current.response_language });
+      } catch (err) { if (active) setModelLoadError(err.message); }
+      finally { if (active) setModelLoading(false); }
+    })();
+    return () => { active = false; };
+  }, [workspaceId]);
+
   // ---- Save model ----
   const handleSaveModel = async () => {
     const normalizedWorkspaceId = Number(workspaceId);
@@ -241,7 +231,6 @@ export default function SettingsPage({ onNavigate, onLogout }) {
     setModelSaved(false);
     try {
       await saveModelSettings(normalizedWorkspaceId, model);
-      localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(model));
       localStorage.setItem("docpilot_model_workspace_id", String(normalizedWorkspaceId));
       showToast("模型设置已保存");
       setModelSaved(true);
@@ -501,9 +490,12 @@ export default function SettingsPage({ onNavigate, onLogout }) {
               </div>
             )}          </div>
 
+          <PersonalModelSettings />
+
           {/* ===== 2. Model settings ===== */}
           <div className="st-card">
-            <h2 className="st-card__title">模型设置</h2>
+            <h2 className="st-card__title">工作空间模型设置</h2>
+            {modelLoadError && <p role="alert" className="st-field-error">{modelLoadError}</p>}
             <div className="st-form-grid">
               <div className="st-form-group">
                 <label htmlFor="model-workspace">工作空间</label>
@@ -553,10 +545,11 @@ export default function SettingsPage({ onNavigate, onLogout }) {
                     setModel({ ...model, modelKey: e.target.value });
                     setModelSaved(false);
                   }}
-                  disabled={modelSaving}
+                  disabled={modelSaving || modelLoading || !!modelLoadError}
                 >
-                  {MODEL_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
+                  {!modelOptions.includes(model.modelKey) && model.modelKey && <option value={model.modelKey} disabled>{model.modelKey}（已不受支持，请重新选择）</option>}
+                  {modelOptions.map((name) => (
+                    <option key={name} value={name}>{name}</option>
                   ))}
                 </select>
               </div>
@@ -567,7 +560,7 @@ export default function SettingsPage({ onNavigate, onLogout }) {
                     setModel({ ...model, temperature: parseFloat(e.target.value) });
                     setModelSaved(false);
                   }}
-                  disabled={modelSaving} />
+                  disabled={modelSaving || modelLoading || !!modelLoadError} />
                 <div className="st-slider-labels"><span>0</span><span>0.5</span><span>1</span><span>1.5</span><span>2</span></div>
               </div>
               <div className="st-form-group">
@@ -575,7 +568,7 @@ export default function SettingsPage({ onNavigate, onLogout }) {
                 <select id="model-max-tokens" value={model.maxTokens} onChange={(e) => {
                   setModel({ ...model, maxTokens: parseInt(e.target.value, 10) });
                   setModelSaved(false);
-                }} disabled={modelSaving}>
+                }} disabled={modelSaving || modelLoading || !!modelLoadError}>
                   <option value={1024}>1024</option>
                   <option value={2048}>2048</option>
                   <option value={4096}>4096</option>
@@ -588,7 +581,7 @@ export default function SettingsPage({ onNavigate, onLogout }) {
                 <select id="model-language" value={model.responseLanguage} onChange={(e) => {
                   setModel({ ...model, responseLanguage: e.target.value });
                   setModelSaved(false);
-                }} disabled={modelSaving}>
+                }} disabled={modelSaving || modelLoading || !!modelLoadError}>
                   {LANGUAGE_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>{option.label}</option>
                   ))}
@@ -596,7 +589,7 @@ export default function SettingsPage({ onNavigate, onLogout }) {
               </div>
             </div>
             <div className="st-card-actions">
-              <button className="st-btn st-btn--primary" disabled={modelSaving || workspaceLoading || !workspaceId} onClick={handleSaveModel}>
+              <button className="st-btn st-btn--primary" disabled={modelSaving || modelLoading || !!modelLoadError || workspaceLoading || !workspaceId || !modelOptions.includes(model.modelKey)} onClick={handleSaveModel}>
                 {modelSaving ? "保存中..." : "保存设置"}
               </button>
               {modelSaved && <span className="st-hint">已同步到当前工作空间</span>}
@@ -719,7 +712,7 @@ export default function SettingsPage({ onNavigate, onLogout }) {
 
           {/* Footer hint */}
           <div style={{ textAlign: "center", padding: "20px 0 40px", fontSize: 12, color: "#94a3b8" }}>
-            DocPilot v0.1.0 · 设置数据暂存于本地，待后端设置接口上线后自动迁移
+            DocPilot v0.1.0 · 模型配置安全保存在服务端
           </div>
       </div>
     </div>

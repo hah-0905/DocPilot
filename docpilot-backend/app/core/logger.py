@@ -39,3 +39,6 @@ def setup_logging() -> None:
     root_logger.addHandler(file_handler)
 
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+    # SDK debug logs can contain full provider request/response bodies.
+    for name in ("openai", "httpx", "httpcore"):
+        logging.getLogger(name).setLevel(logging.WARNING)

@@ -325,14 +325,15 @@ async def chat(
     if request.kb_id != kb_id:
         raise HTTPException(status_code=422, detail="知识库 ID 不一致")
 
-    await kb_service.get_knowledge_base(
+    kb = await kb_service.get_knowledge_base(
         db, user_id=current_user.id, kb_id=kb_id
     )
     result = await rag_service.rag_chat(
         db,
         kb_id=kb_id,
         question=request.question,
-        top_k=request.top_k
+        top_k=request.top_k,
+        user_id=current_user.id, workspace_id=kb.workspace_id,
     )
 
     return ApiResponse(

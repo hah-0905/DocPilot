@@ -9,6 +9,7 @@ from app.models.report import ReportSection, ReportTask
 from app.schemas.report import ReportTaskCreate
 from app.services.rag_service import RagService
 from app.services.llm_service import LLMService
+from app.services.model_runtime import resolve_model_runtime
 from app.services.kb_service import KbService
 
 
@@ -30,13 +31,14 @@ class ReportService:
         if request.workspace_id != kb.workspace_id:
             raise HTTPException(status_code=422, detail="知识库与工作区不匹配")
 
+        runtime = await resolve_model_runtime(db, user_id, kb.workspace_id)
         task = ReportTask(
             title=request.title,
             user_id=user_id,
             workspace_id=kb.workspace_id,
             report_type=request.report_type,
             instruction=request.instruction,
-            model_name=request.model_name,
+            model_name=runtime.model_key,
             status="running",
             started_at=datetime.utcnow(),
             config={
@@ -177,16 +179,10 @@ class ReportService:
             },
         ]
 
-        try:
-            content = await self.llm_service.chat(messages)
-            return content or (
-                f"本章节围绕“{section_config.get('requirement', '')}”展开。"
-            )
-        except Exception:
-            return (
-                f"本章节围绕“{section_config.get('requirement', '')}”展开。"
-                f"LLM 生成暂不可用，以下为检索到的参考内容：\n\n{context[:1000]}"
-            )
+        runtime = await resolve_model_runtime(db, task.user_id, task.workspace_id)
+        task.model_name = runtime.model_key
+        content = await self.llm_service.chat(messages, runtime=runtime)
+        return content or f"本章节围绕“{section_config.get('requirement', '')}”展开。"
 
     async def get_report_tasks(
             self,

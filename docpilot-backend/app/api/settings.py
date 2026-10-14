@@ -21,6 +21,18 @@ settingsService = SettingsService()
 
 logger = logging.getLogger(__name__)
 
+
+@router.get("/model/{workspace_id}")
+async def get_model_settings(
+    workspace_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.workspace_settings_service import workspace_settings_service
+
+    await settingsService.select_workspace_member(db, current_user.id, workspace_id)
+    return await workspace_settings_service.get_model_settings(db, workspace_id)
+
 # 头像大小限制
 MAX_AVATAR_SIZE = 2 * 1024 * 1024
 AVATAR_SIZE = (512, 512)

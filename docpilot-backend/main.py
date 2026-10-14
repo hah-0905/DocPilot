@@ -10,6 +10,7 @@ from app.api.kb import router as kb_router
 from app.api.chat import router as chat_router
 from app.api.report import router as report_router
 from app.api.settings import router as settings_router
+from app.api.personal_model import router as personal_model_router
 from app.core.logger import setup_logging
 from app.core.redis import check_redis_connection, close_redis, init_redis
 
@@ -57,6 +58,7 @@ router = app.include_router(kb_router)
 router = app.include_router(chat_router)
 router = app.include_router(report_router)
 router = app.include_router(settings_router)
+app.include_router(personal_model_router)
 
 
 @app.get("/health")
