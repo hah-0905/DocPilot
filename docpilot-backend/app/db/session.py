@@ -6,7 +6,8 @@ settings = get_settings()
 # 创建异步引擎
 async_engine = create_async_engine(
     settings.database_url,
-    echo=True,  # 打印SQL语句
+    echo=False,
+    hide_parameters=True,  # Credentials must never appear in SQL errors or logs
     pool_size=10,  # 设置连接池活跃的连接数
     max_overflow=20,  # 允许额外的连接数
 )

@@ -37,6 +37,9 @@ class SecuritySession(SQLiteAsyncSession):
         self.statements.append(statement)
         return await super().execute(statement)
 
+    async def scalar(self, statement):
+        return self.session.scalar(statement)
+
     async def get(self, model, key, **kwargs):
         return self.session.get(model, key, **kwargs)
 

@@ -1,5 +1,13 @@
 from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import BaseModel, Field, SecretStr
+
+
+class ModelProvider(BaseModel):
+    id: str = Field(pattern=r"^[a-z][a-z0-9_-]{0,31}$")
+    label: str = Field(min_length=1, max_length=80)
+    base_url: str
+    models: list[str] = Field(min_length=1)
 
 
 class Settings(BaseSettings):
@@ -13,6 +21,12 @@ class Settings(BaseSettings):
     embedding_model: str
     embedding_base_url: str | None = None
     embedding_api_key: str | None = None
+
+    # Stable server-only Fernet key. Never generated implicitly.
+    personal_model_master_key: SecretStr | None = None
+    platform_models: list[str] = Field(default_factory=list)
+    personal_model_providers: list[ModelProvider] = Field(default_factory=list)
+    llm_timeout_seconds: float = Field(default=60, ge=1, le=300)
 
     database_url: str
 

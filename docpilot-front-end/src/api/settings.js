@@ -181,3 +181,10 @@ export async function changePassword(data) {
     }),
   });
 }
+
+export const getModelCatalog = () => request("/api/settings/model-catalog", { cache: "no-store" });
+export const getPersonalModel = () => request("/api/settings/personal-model", { cache: "no-store" });
+export const getWorkspaceModel = (id) => request(`/api/settings/model/${normalizeWorkspaceId(id)}`, { cache: "no-store" });
+export const savePersonalModel = (data) => request("/api/settings/personal-model", { method: "PUT", body: JSON.stringify(data) });
+export const testPersonalModel = (data) => request("/api/settings/personal-model/test", { method: "POST", body: JSON.stringify(data) });
+export const deletePersonalModel = () => request("/api/settings/personal-model", { method: "DELETE" });

@@ -12,6 +12,9 @@ from app.models.document_processing_tasks import (  # noqa: F401
     DocumentProcessingTask,
 )
 
+from app.models.users import User  # noqa: F401
+from app.models.user_model_config import UserModelConfig  # noqa: F401
+
 async def init_db() -> None:
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

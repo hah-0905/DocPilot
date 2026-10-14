@@ -1,6 +1,7 @@
 import json
+from contextlib import aclosing
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from app.services.chat_service import ChatService
@@ -62,24 +63,27 @@ async def create_chat_completions(
 
     async def event_generator():
         try:
-            async for chunk in chat_service.stream_chat(
+            async with aclosing(chat_service.stream_chat(
                 db=db,
                 current_user=current_user,
                 session_id=request.session_id,
                 message=request.message,
                 kb_id=request.kb_id,
-            ):
-                # chunk 可以改成 dict {"text": "...", "used_chunks": [...]}
-                if isinstance(chunk, dict):
-                    yield f"data: {json.dumps(chunk)}\n\n"
-                else:
-                    # 兼容原来的字符串
-                    yield f"data: {json.dumps({'text': chunk, 'used_chunks': []})}\n\n"
+            )) as stream:
+                async for chunk in stream:
+                    # chunk 可以改成 dict {"text": "...", "used_chunks": [...]}
+                    if isinstance(chunk, dict):
+                        yield f"data: {json.dumps(chunk)}\n\n"
+                    else:
+                        # 兼容原来的字符串
+                        yield f"data: {json.dumps({'text': chunk, 'used_chunks': []})}\n\n"
 
             yield "data: [DONE]\n\n"
 
         except Exception as e:
-            yield f"event: error\ndata: {str(e)}\n\n"
+            await db.rollback()
+            message = e.detail if isinstance(e, HTTPException) else "聊天请求失败，请稍后重试"
+            yield f"event: error\ndata: {message}\n\n"
             yield "data: [DONE]\n\n"
 
     return StreamingResponse(

@@ -1,4 +1,5 @@
 from collections.abc import AsyncGenerator
+from contextlib import aclosing
 import time
 from typing import Any
 
@@ -10,6 +11,7 @@ from app.models.kb import KnowledgeBase
 from app.models.users import User
 from app.models.workspaces import Workspace
 from app.services.llm_service import LLMService
+from app.services.model_runtime import resolve_model_runtime
 from app.services.rag_service import RagService
 
 from app.services.workspace_settings_service import (
@@ -297,9 +299,8 @@ class ChatService:
         )
 
         # 2. 获取当前工作区的模型设置
-        model_settings = await workspace_settings_service.get_model_settings(
-            db=db,
-            workspace_id=chat_session.workspace_id,
+        model_settings = await resolve_model_runtime(
+            db, user.id, chat_session.workspace_id,
         )
 
         # 3. 根据当前工作区的检索设置执行检索
@@ -331,9 +332,7 @@ class ChatService:
         # 5. 调用大模型
         answer = await self.llm_service.chat(
             messages=messages,
-            model=model_settings.model_key,
-            temperature=float(model_settings.temperature),
-            max_tokens=model_settings.max_tokens,
+            runtime=model_settings,
         )
         latency_ms = int((time.perf_counter() - start_time) * 1000)
 
@@ -401,9 +400,8 @@ class ChatService:
             kb_id,
         )
 
-        model_settings = await workspace_settings_service.get_model_settings(
-            db=db,
-            workspace_id=chat_session.workspace_id,
+        model_settings = await resolve_model_runtime(
+            db, user.id, chat_session.workspace_id,
         )
 
         retrieved_chunks = await self._retrieve_chunks(
@@ -435,14 +433,13 @@ class ChatService:
             "used_chunks": used_chunks,
         }
 
-        async for chunk in self.llm_service.stream_chat(
+        async with aclosing(self.llm_service.stream_chat(
             messages=messages,
-            model=model_settings.model_key,
-            temperature=model_settings.temperature,
-            max_tokens=model_settings.max_tokens,
-        ):
-            answer_chunks.append(chunk)
-            yield chunk
+            runtime=model_settings,
+        )) as stream:
+            async for chunk in stream:
+                answer_chunks.append(chunk)
+                yield chunk
 
         full_answer = "".join(answer_chunks)
         latency_ms = int((time.perf_counter() - start_time) * 1000)

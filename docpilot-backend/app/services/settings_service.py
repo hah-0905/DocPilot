@@ -8,13 +8,10 @@ from app.schemas.settings import ModelSettingsUpdate, ReportSettingsUpdate, Retr
 from app.models.workspace_members import WorkspaceMember
 from app.models.workspace_model_settings import WorkspaceModelSettings
 from app.models.workspace_retrieval_settings import WorkspaceRetrievalSettings
-from app.models.workspace_model_settings import WorkspaceModelSettings
 from app.models.workspace_report_settings import WorkspaceReportSettings
 
-SUPPORTED_MODELS = {
-    "deepseek-chat",
-    "deepseek-reasoner",
-}
+from app.core.config import get_settings
+from app.services.model_catalog import platform_models
 
 
 class SettingsService:
@@ -81,11 +78,14 @@ class SettingsService:
         # 查询工作空间模型是否支持该模型
         update_data = request.model_dump(exclude_unset=True)
 
+        if any(value is None for value in update_data.values()):
+            raise HTTPException(422, "模型设置字段不能为 null")
+
         model_name = update_data.get("model_key")
-        if model_name and model_name not in SUPPORTED_MODELS:
+        if model_name and model_name not in platform_models():
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"不支持的模型：{model_name}"
+                detail="不支持的平台模型，请重新选择"
             )
 
         # 查询该工作空间是否已有设置
@@ -100,7 +100,7 @@ class SettingsService:
         if model_settings is None:
             model_settings = WorkspaceModelSettings(
                 workspace_id=workspace_id,
-                **update_data,
+                **{"model_key": get_settings().model_name, **update_data},
             )
             db.add(model_settings)
         else:

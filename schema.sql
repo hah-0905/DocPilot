@@ -163,7 +163,7 @@ CREATE INDEX idx_workspace_members_user ON workspace_members (user_id);
 CREATE TABLE workspace_model_settings (
 	id BIGINT UNSIGNED NOT NULL COMMENT '模型设置 ID' AUTO_INCREMENT, 
 	workspace_id BIGINT UNSIGNED NOT NULL COMMENT '工作空间 ID；每个工作空间仅一条设置', 
-	model_key VARCHAR(128) NOT NULL COMMENT '模型内部标识，例如 deepseek-chat 或 gpt-4o-mini' DEFAULT 'deepseek-chat', 
+	model_key VARCHAR(128) NOT NULL COMMENT '模型内部标识；由应用继承 MODEL_NAME',
 	temperature DOUBLE NOT NULL COMMENT '采样温度，通常范围为 0 到 2' DEFAULT (0.7), 
 	max_tokens INTEGER UNSIGNED NOT NULL COMMENT '单次回答的最大生成 Token 数' DEFAULT 4096, 
 	response_language VARCHAR(32) NOT NULL COMMENT '默认回复语言' DEFAULT 'zh-CN', 
@@ -492,5 +492,20 @@ CREATE TABLE report_sources (
 CREATE INDEX idx_report_sources_chunk ON report_sources (chunk_id);
 CREATE INDEX idx_report_sources_section ON report_sources (section_id);
 CREATE INDEX idx_report_sources_task ON report_sources (task_id);
+
+-- MySQL 8.0; repeatable, additive upgrade. No existing credentials/data are changed.
+CREATE TABLE user_model_configs (
+    user_id BIGINT UNSIGNED NOT NULL,
+    provider_id VARCHAR(32) NOT NULL,
+    model_name VARCHAR(128) NOT NULL,
+    encrypted_credential TEXT NOT NULL,
+    credential_last_four VARCHAR(4) NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id),
+    CONSTRAINT fk_user_model_configs_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 
 SET FOREIGN_KEY_CHECKS = 1;

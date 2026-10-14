@@ -31,31 +31,9 @@ with (
 
 class RagChatSecurityTests(unittest.TestCase):
     def setUp(self):
-        self.engine = create_engine(
-            "sqlite://", poolclass=StaticPool,
-            connect_args={"check_same_thread": False},
-        )
+        from tests.security_sqlite import make_engine
+        self.engine = make_engine()
         self.addCleanup(self.engine.dispose)
-        with self.engine.begin() as connection:
-            connection.exec_driver_sql("""
-                CREATE TABLE workspaces (
-                    id INTEGER PRIMARY KEY, name TEXT, description TEXT,
-                    owner_user_id INTEGER, status TEXT,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    deleted_at DATETIME
-                )
-            """)
-            connection.exec_driver_sql("""
-                CREATE TABLE knowledge_bases (
-                    id INTEGER PRIMARY KEY, workspace_id INTEGER, name TEXT,
-                    description TEXT, visibility TEXT, embedding_model TEXT,
-                    rerank_model TEXT, chunk_strategy TEXT, chunk_size INTEGER,
-                    chunk_overlap INTEGER, default_top_k INTEGER, status TEXT,
-                    created_by INTEGER, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, deleted_at DATETIME
-                )
-            """)
         with Session(self.engine) as db:
             db.add_all([
                 Workspace(id=10, name="Alice", owner_user_id=1, status="active"),

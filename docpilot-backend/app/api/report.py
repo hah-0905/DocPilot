@@ -129,8 +129,8 @@ async def create_report_task(
 
         raise HTTPException(
             status_code=500,
-            detail=f"报告任务创建失败：{exc}",
-        ) from exc
+            detail="报告任务创建失败，请稍后重试",
+        ) from None
 
 
 @router.get("/tasks")

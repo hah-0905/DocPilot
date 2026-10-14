@@ -376,3 +376,7 @@ POST /chat/completions
 ## License
 
 本项目暂未指定开源许可证。如需开源发布，建议补充 MIT、Apache-2.0 或其他合适的 License。
+
+## 个人模型配置 / BYOK
+
+设置页支持用户自带 API Key，覆盖聊天、流式聊天、知识库问答和报告生成。部署所需主密钥、可信服务商目录、数据库升级脚本和接口行为见 [配置说明](docs/PERSONAL_MODEL_CONFIG.md)。

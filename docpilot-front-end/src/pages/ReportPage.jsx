@@ -244,7 +244,6 @@ export default function ReportPage() {
   const [length, setLength] = useState("medium");
   const [citationFormat, setCitationFormat] = useState("markdown");
   const [instruction, setInstruction] = useState("突出 RAG 核心流程、关键技术与落地价值");
-  const [modelName, setModelName] = useState("DeepSeek / GPT");
   const [markdown, setMarkdown] = useState(DEFAULT_MARKDOWN);
   const [task, setTask] = useState(null);
   const [tasks, setTasks] = useState([]);
@@ -343,7 +342,6 @@ export default function ReportPage() {
         length,
         citation_format: citationFormat,
         instruction: instruction.trim() || null,
-        model_name: modelName.trim() || null,
       });
       setTask(result);
       setMarkdown(result?.result_content || "");
@@ -521,7 +519,7 @@ export default function ReportPage() {
 
         <label className="report-field">
           <span>使用模型</span>
-          <input value={modelName} onChange={(event) => setModelName(event.target.value)} placeholder="DeepSeek / GPT" />
+          <input value="遵循设置页的模型来源与配置" readOnly />
         </label>
 
         <label className="report-field">

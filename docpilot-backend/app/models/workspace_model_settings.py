@@ -5,6 +5,7 @@ from sqlalchemy.dialects.mysql import BIGINT, DATETIME, INTEGER
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.core.config import get_settings
 
 
 class WorkspaceModelSettings(Base):
@@ -38,8 +39,7 @@ class WorkspaceModelSettings(Base):
     model_key: Mapped[str] = mapped_column(
         String(128),
         nullable=False,
-        default="deepseek-chat",
-        server_default=text("'deepseek-chat'"),
+        default=lambda: get_settings().model_name,
         comment="模型内部标识，例如 deepseek-chat 或 gpt-4o-mini",
     )
     temperature: Mapped[float] = mapped_column(
